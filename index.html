@@ -196,8 +196,8 @@
   .mk.done .dot::after { content: "✓"; font-size: 1.8cqw; color: #1b2250; font-weight: 800; }
 
   /* finale */
-  .finale { position: absolute; left: 0; right: 0; top: 24%; text-align: center; animation: fadeIn 1s ease-out; }
-  .finale .fam { font-size: 4.6cqw; font-weight: 800; color: var(--gold); line-height: 1.05; text-shadow: 0 .4cqw 0 var(--blue), 0 0 2cqw rgba(0,0,0,.6); }
+  .finale { position: absolute; left: 0; right: 0; top: 3%; text-align: center; animation: fadeIn 1s ease-out; }
+  .finale .fam { font-size: 5.2cqw; font-weight: 800; color: var(--gold); line-height: 1.05; text-shadow: 0 .4cqw 0 var(--blue), 0 0 2cqw rgba(0,0,0,.6); }
   .finale .welcome { font-size: 2.5cqw; font-weight: 700; text-shadow: 0 .2cqw .6cqw rgba(0,0,0,.8); }
   .replay {
     position: absolute; right: 2.5%; bottom: 4%; pointer-events: auto; font: inherit; font-weight: 800; font-size: 2cqw;
@@ -224,6 +224,10 @@
   .tail { transform-box: fill-box; transform-origin: 0% 50%; animation: wag .45s infinite alternate ease-in-out; }
   @keyframes wag { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
 
+  #iris {
+    position: absolute; inset: 0; pointer-events: none; z-index: 3; display: none;
+    background: radial-gradient(circle at var(--ix, 50%) var(--iy, 50%), transparent calc(var(--ir, 70) * 1cqw), #0b0f2a calc(var(--ir, 70) * 1cqw + 1px));
+  }
   #firelight { mix-blend-mode: soft-light; pointer-events: none; animation: glow 1.1s infinite alternate ease-in-out; }
   .pilot-card {
     position: absolute; left: 50%; top: 4%; transform: translateX(-50%); pointer-events: auto;
@@ -273,6 +277,7 @@
           <stop offset=".5" stop-color="#ff8a3a" stop-opacity=".18"/>
           <stop offset="1" stop-color="#ff8a3a" stop-opacity="0"/>
         </radialGradient>
+        <filter id="softBlur" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="7"/></filter>
         <radialGradient id="closeBg" cx=".42" cy=".55" r=".75">
           <stop offset="0" stop-color="#7a4a3a"/>
           <stop offset=".5" stop-color="#3b2750"/>
@@ -289,6 +294,7 @@
       </g>
     </svg>
     <div id="overlay"></div>
+    <div id="iris"></div>
     <div id="start">
       <div class="kicker">Cub Scout Pack 149 presents</div>
       <h1>The Painted Bobcat</h1>
@@ -558,22 +564,29 @@ function setCaption(name, text, color) {
   $('#caption').innerHTML = `<span class="who" style="background:${color}">${name}</span><span class="txt"></span>`;
   $('#caption .txt').textContent = text;
 }
-function showBubble(x, y, text, big) {
-  x = (x - cam.x) * cam.z + W / 2; y = (y - cam.y) * cam.z + HGT / 2;
-  const b = H('div', 'bubble' + (big ? ' big' : ''));
-  b.textContent = text;
+const BUBBLES = [];
+function placeBubble(b) {
+  const x = (b.wx - cam.x) * cam.z + W / 2, y = (b.wy - cam.y) * cam.z + HGT / 2;
   const cx = Math.max(150, Math.min(W - 150, x));
-  b.style.left = (cx / W * 100) + '%';
-  b.style.top = (Math.max(90, y) / HGT * 100) + '%';
-  b.style.setProperty('--tail', `calc(50% + ${((x - cx) / W * 100).toFixed(2)}cqw)`);
-  overlay.appendChild(b);
-  return b;
+  b.el.style.left = (cx / W * 100) + '%';
+  b.el.style.top = (Math.max(90, y) / HGT * 100) + '%';
+  b.el.style.setProperty('--tail', `calc(50% + ${((x - cx) / W * 100).toFixed(2)}cqw)`);
+}
+function showBubble(x, y, text, big) {
+  const el = H('div', 'bubble' + (big ? ' big' : ''));
+  el.textContent = text;
+  const b = { el, wx: x, wy: y };
+  placeBubble(b);
+  BUBBLES.push(b);
+  overlay.appendChild(el);
+  return el;
 }
 const NARRATOR = { name: 'Narrator', color: '#6b4f9e', voice: { pitch: 1, rate: .95 } };
 function say(who, text, { bubble = true, min = 0, big = false } = {}) {
   who = who || NARRATOR;
   setCaption(who.name, text, who.color);
-  const b = (bubble && who.top) ? showBubble(who.x, who.top() - 14, text, big) : null;
+  // very long lines stay in the caption; a bubble that tall would run off the top of the screen
+  const b = (bubble && who.top && text.length <= 95) ? showBubble(who.x, who.top() - 14, text, big) : null;
   if (params.has('collect')) (window.__lines ||= {})[who.name + '|' + text] = [who.name, text];
   const words = text.split(/\s+/).length;
   const recorded = soundOn && clipFor(who.name, text);
@@ -629,27 +642,30 @@ function buildBackground() {
   // painted backdrop (hidden until chosen); covers the drawn sky, trees and ground above
   bg.append(S('image', { id: 'backdrop', x: 0, y: -72, width: W, height: 853, preserveAspectRatio: 'xMidYMid slice', style: 'display:none' }));
   // bunting + Pack 149 banner
+  const bunting = S('g', { id: 'bunting' });
+  bg.append(bunting);
   const P0 = [0, 30], P1 = [640, 170], P2 = [W, 30], bq = t => [
     (1 - t) ** 2 * P0[0] + 2 * (1 - t) * t * P1[0] + t * t * P2[0],
     (1 - t) ** 2 * P0[1] + 2 * (1 - t) * t * P1[1] + t * t * P2[1]];
-  bg.append(S('path', { d: `M${P0} Q${P1} ${P2}`, stroke: '#e8d8b0', 'stroke-width': 2, fill: 'none' }));
+  bunting.append(S('path', { d: `M${P0} Q${P1} ${P2}`, stroke: '#e8d8b0', 'stroke-width': 2, fill: 'none' }));
   for (let i = 1; i < 26; i++) {
     const t = i / 26; if (Math.abs(t - .5) < .1) continue;
     const [x, y] = bq(t);
-    bg.append(S('polygon', { points: `${x - 12},${y} ${x + 12},${y} ${x},${y + 30}`, fill: i % 2 ? '#2456b8' : '#f5b700' }));
+    bunting.append(inked('polygon', { points: `${x - 12},${y} ${x + 12},${y} ${x},${y + 30}`, fill: i % 2 ? '#2456b8' : '#f5b700' }, 2.5));
   }
   const b = S('g', { transform: 'translate(640,100)' });
-  b.append(S('rect', { x: -130, y: 0, width: 260, height: 62, rx: 12, fill: '#2456b8', stroke: '#f5b700', 'stroke-width': 5 }),
+  b.append(S('rect', { x: -134, y: -4, width: 268, height: 70, rx: 15, fill: INK }),
+           S('rect', { x: -130, y: 0, width: 260, height: 62, rx: 12, fill: '#2456b8', stroke: '#f5b700', 'stroke-width': 5 }),
            S('text', { x: 0, y: 44, 'text-anchor': 'middle', 'font-size': 40, 'font-weight': 800, fill: '#f5b700',
                        'font-family': '"Baloo 2", "Comic Sans MS", sans-serif' }, '★ PACK 149 ★'));
-  bg.append(b);
+  bunting.append(b);
   // campfire
-  const f = S('g', { transform: `translate(${FIRE_X},${GROUND + 8}) scale(.85)` });
+  const f = S('g', { id: 'fire', transform: `translate(${FIRE_X},${GROUND + 8}) scale(.85)` });
   f.append(S('circle', { cx: 0, cy: -40, r: 190, fill: 'url(#fireGlow)', class: 'glow' }));
-  [-50, -28, 0, 28, 50].forEach((x, i) => f.append(S('ellipse', { cx: x, cy: 4 - (i % 2) * 4, rx: 16, ry: 10, fill: '#7d7f8a' })));
-  f.append(S('rect', { x: -60, y: -14, width: 120, height: 16, rx: 8, fill: '#6b4424', transform: 'rotate(14)' }),
-           S('rect', { x: -60, y: -14, width: 120, height: 16, rx: 8, fill: '#7d5230', transform: 'rotate(-14)' }));
-  f.append(S('path', { class: 'flame', fill: '#ff6a1a', d: 'M-42,0 Q-52,-50 -14,-95 Q-18,-55 0,-66 Q8,-118 30,-130 Q22,-76 44,-44 Q52,-16 42,0Z' }),
+  [-50, -28, 0, 28, 50].forEach((x, i) => f.append(inked('ellipse', { cx: x, cy: 4 - (i % 2) * 4, rx: 16, ry: 10, fill: '#8d8fa0' }, 4)));
+  f.append(inked('rect', { x: -60, y: -14, width: 120, height: 16, rx: 8, fill: '#7a4a26', transform: 'rotate(14)' }, 4),
+           inked('rect', { x: -60, y: -14, width: 120, height: 16, rx: 8, fill: '#8d5a32', transform: 'rotate(-14)' }, 4));
+  f.append(S('path', { class: 'flame', fill: '#ff6a1a', stroke: INK, 'stroke-width': 4.5, 'stroke-linejoin': 'round', d: 'M-42,0 Q-52,-50 -14,-95 Q-18,-55 0,-66 Q8,-118 30,-130 Q22,-76 44,-44 Q52,-16 42,0Z' }),
            S('path', { class: 'flame f2', fill: '#ffae1a', d: 'M-28,0 Q-34,-38 -8,-70 Q-8,-40 6,-50 Q12,-84 24,-92 Q18,-56 32,-30 Q36,-10 28,0Z' }),
            S('path', { class: 'flame f3', fill: '#fff1a8', d: 'M-14,0 Q-18,-24 -2,-44 Q2,-26 10,-34 Q14,-18 16,-8 Q16,0 14,0Z' }));
   for (let i = 0; i < 9; i++) {
@@ -670,8 +686,8 @@ function buildBackground() {
   // bush the Bobcat hides behind (drawn in front of the actors)
   const bush = S('g', { id: 'bush' });
   [[-55, -30, 42, '#24583a'], [0, -48, 52, '#2c6a45'], [55, -28, 44, '#24583a'], [-25, -12, 40, '#2f7349'], [30, -12, 40, '#2f7349']]
-    .forEach(([x, y, rr, c]) => bush.append(S('circle', { cx: x, cy: y, r: rr, fill: c })));
-  bush.append(S('circle', { cx: -20, cy: -60, r: 5, fill: '#ff7a9a' }), S('circle', { cx: 32, cy: -38, r: 5, fill: '#ffd36a' }));
+    .forEach(([x, y, rr, c]) => bush.append(inked('circle', { cx: x, cy: y, r: rr, fill: c }, 5)));
+  bush.append(inked('circle', { cx: -20, cy: -60, r: 6, fill: '#ff7a9a' }, 3), inked('circle', { cx: 32, cy: -38, r: 6, fill: '#ffd36a' }, 3));
   frontL.append(bush);
   setBush(0);
 }
@@ -680,7 +696,6 @@ function setBackdrop(name) {
   const img = $('#backdrop');
   if (BACKDROPS[name]) { img.setAttribute('href', BACKDROPS[name]); img.style.display = ''; }
   else img.style.display = 'none';
-  $('#bush').style.display = BACKDROPS[name] ? 'none' : '';
 }
 function setBush(rot) { $('#bush').setAttribute('transform', `translate(${BUSH_X},${GROUND + 14}) rotate(${rot})`); }
 
@@ -938,15 +953,17 @@ function makeBobcat() {
   return new Actor(g, { name: 'Bobcat', color: '#b0772e', headTop: -205, cy: -80, voice: { pitch: 1.9, rate: 1.12 } });
 }
 function makeCast() {
-  const dad = makeAdult({ name: 'Dad', color: '#c8553d', skin: '#e8b48a', hair: '#4a2e1a', shirt: '#c8553d', pants: '#3b4a6b',
-                          glasses: true, beard: true, tee: 'PROUD DAD', voice: { pitch: .75, rate: .98 },
-                          hairTop: 'M-60,-4 Q-64,-70 -10,-70 Q40,-78 60,-40 Q62,-20 60,-4 Q48,-44 10,-44 Q-40,-44 -60,-4Z' });
-  const mom = makeAdult({ name: 'Mom', color: '#2e9e8f', skin: '#f2c29c', hair: '#8a4b22', shirt: '#2e9e8f', pants: '#394a78',
-                          longHair: true, tee: 'PROUD MOM', voice: { pitch: 1.25, rate: 1 } });
-  const akela = makeAdult({ name: 'Akela', color: '#8a6a2e', skin: '#e9b98f', hair: '#9a9a9a', shirt: '#cdb47c', pants: '#55633a',
-                            hat: 'campaign', mustache: '#a8a8a8', leader: true, brow: '#8a8a8a', voice: { pitch: .9, rate: .94 } });
-  const max = makeCub('Max');
-  const cat = makeBobcat();
+  const dad = makeToonAdult({ name: 'Dad', color: '#c8553d', skin: '#eab48c', skinShade: '#cf8f66', hair: '#4a2e1a', hairStyle: 'dad',
+                              shirt: '#d05a3f', shirtShade: '#a8412c', pants: '#3b4a7b', glasses: true, beard: true, iris: '#3c6fb0',
+                              tee: 'PROUD DAD', voice: { pitch: .75, rate: .98 } });
+  const mom = makeToonAdult({ name: 'Mom', color: '#2e9e8f', skin: '#f5c7a2', skinShade: '#dc9f7c', hair: '#8a4b22', hairStyle: 'mom',
+                              longHair: true, lashes: true, shirt: '#2fa596', shirtShade: '#1f7d71', pants: '#39508a', iris: '#3f7d4f',
+                              tee: 'PROUD MOM', voice: { pitch: 1.25, rate: 1 } });
+  const akela = makeToonAdult({ name: 'Akela', color: '#8a6a2e', skin: '#ebb993', skinShade: '#cf9670', hair: '#b9b9c2', hairStyle: 'akela',
+                                hat: 'campaign', mustache: '#c9c9d1', brow: '#9a9aa6', bushy: true, shirt: '#d8c08a', shirtShade: '#b69d63',
+                                pants: '#5b6a3c', iris: '#6b4a2a', leader: true, voice: { pitch: .9, rate: .94 } });
+  const max = makeToonCub('Max');
+  const cat = makeToonCat();
   return { dad, mom, akela, max, cat };
 }
 
@@ -966,7 +983,7 @@ function makeBrush(scale = 1) {
   return b;
 }
 function toWorld(el, x, y) {
-  const m = svg.getScreenCTM().inverse().multiply(el.getScreenCTM());
+  const m = $('#world').getScreenCTM().inverse().multiply(el.getScreenCTM());
   return new DOMPoint(x, y).matrixTransform(m);
 }
 async function paintMark(head, key, brush, ms = 700) {
@@ -1026,6 +1043,7 @@ let cam = { x: W / 2, y: HGT / 2, z: 1 };
 function setCam(x, y, z) {
   cam = { x, y, z };
   $('#world').setAttribute('transform', `translate(${W / 2} ${HGT / 2}) scale(${z}) translate(${-x} ${-y})`);
+  for (let i = BUBBLES.length - 1; i >= 0; i--) BUBBLES[i].el.isConnected ? placeBubble(BUBBLES[i]) : BUBBLES.splice(i, 1);
 }
 function camera(x, y, z, ms = 900) {
   const c0 = { ...cam };
@@ -1053,23 +1071,139 @@ const TOONS = [];
   });
 })();
 
+// Face paint on a cartoon head (radius 60, eyes at y 6). Same marks and keys as PAINT.
+const TOON_PAINT = {
+  paw:    { color: '#2a6fdb', w: 2.5, fill: true,
+            d: [dot(-9, -29, 3.2), dot(0, -33, 3.2), dot(9, -29, 3.2), 'M-7,-17 Q0,-26 7,-17 Q7,-12 0,-12 Q-7,-12 -7,-17Z'] },
+  eyes:   { color: '#f4c400', w: 4.5, d: ['M-31,27 Q-22,32 -13,27', 'M13,27 Q22,32 31,27'] },
+  nose:   { color: '#ffffff', w: 6, d: ['M0,2 L0,17'] },
+  chin:   { color: '#d8342c', w: 5.5, d: ['M0,50 L0,57'] },
+  cheeks: { color: '#2f9e44', w: 4.5, d: ['M-54,12 L-42,22', 'M-51,29 L-42,36', 'M54,12 L42,22', 'M51,29 L42,36'] },
+};
+function toonEyes(parent, { xs = [-22, 22], y = 6, rx = 13, ry = 15.5, iris = '#6b4424', lashes = false } = {}) {
+  const open = S('g'), joy = S('g', { style: 'display:none' }), eyes = [];
+  xs.forEach(x => {
+    const e = S('g', { transform: `translate(${x} ${y})` }), sd = Math.sign(x);
+    e.append(inked('ellipse', { cx: 0, cy: 0, rx, ry, fill: '#fff' }, 3.5),
+             S('circle', { cx: rx * .12, cy: ry * .16, r: rx * .73, fill: iris }),
+             S('circle', { cx: rx * .12, cy: ry * .19, r: rx * .4, fill: '#1c1224' }),
+             S('circle', { cx: rx * .38, cy: -ry * .16, r: rx * .26, fill: '#fff' }),
+             S('circle', { cx: -rx * .19, cy: ry * .45, r: rx * .12, fill: '#fff' }));
+    if (lashes) e.append(S('path', { d: `M${sd * rx * .75},${-ry * .65} l${sd * 7},-6 M${sd * rx * .98},${-ry * .25} l${sd * 8},-3`,
+                                     stroke: INK, 'stroke-width': 3, 'stroke-linecap': 'round' }));
+    eyes.push({ g: e, x, y });
+    open.append(e);
+    joy.append(S('path', { d: `M${x - rx * .85},${y + 4} Q${x},${y - 10} ${x + rx * .85},${y + 4}`, stroke: INK, 'stroke-width': 5, fill: 'none', 'stroke-linecap': 'round' }));
+  });
+  parent.append(open, joy);
+  return { eyes, eyeOpen: open, eyeJoy: joy };
+}
+function toonMouth(parent, { y = 31, w = 13, depth = 22 } = {}) {
+  const open = inked('path', { fill: '#7a2335' }, 3.5), tongue = S('ellipse', { rx: w * .55, fill: '#ff7b93' }),
+        teeth = S('rect', { x: -w * .7, y: y + .5, width: w * 1.4, height: 4.5, rx: 2, fill: '#fff' }),
+        smile = S('path', { d: `M${-w - 1},${y + 1} Q0,${y + 11} ${w + 1},${y + 1}`, stroke: INK, 'stroke-width': 4.5, fill: 'none', 'stroke-linecap': 'round' });
+  parent.append(smile, open, teeth, tongue);
+  return o => {
+    const isOpen = o > .06;
+    smile.style.display = isOpen ? 'none' : '';
+    [open, teeth].forEach(el => el.style.display = isOpen ? '' : 'none');
+    tongue.style.display = o > .3 ? '' : 'none';
+    if (!isOpen) return;
+    const ww = w + o * 4, d = 8 + o * depth;
+    open.setAttribute('d', `M${-ww},${y} Q0,${y + 4} ${ww},${y} Q${ww * .8},${y + d * .8} 0,${y + d} Q${-ww * .8},${y + d * .8} ${-ww},${y}Z`);
+    tongue.setAttribute('cy', y + d * .72); tongue.setAttribute('ry', 2 + d * .18);
+  };
+}
+const HAIR = {
+  max:  'M-58,-6 Q-68,-66 -20,-72 Q-4,-84 14,-74 Q54,-76 60,-28 Q62,-14 58,-4 Q50,-36 32,-40 L25,-34 L15,-46 L3,-38 L-9,-48 L-21,-38 L-32,-44 Q-52,-34 -58,-6Z',
+  mom:  'M-60,-2 Q-66,-66 -6,-72 Q56,-74 62,-8 Q56,-34 36,-42 Q10,-32 -20,-48 Q-44,-38 -60,-2Z',
+  dad:  'M-60,-8 Q-66,-68 -8,-72 Q48,-80 62,-30 Q62,-16 60,-6 Q54,-40 30,-44 Q0,-38 -30,-46 Q-52,-38 -60,-8Z',
+  akela:'M-62,6 Q-66,-30 -48,-44 L48,-44 Q66,-30 62,6 Q54,-22 30,-30 L-30,-30 Q-54,-22 -62,6Z',
+};
+// One cartoon head: face, hair, eyes, brows, mouth, face-paint slots.
+function makeToonHead(o) {
+  const skin = o.skin || '#f7c9a3', shade = o.skinShade || '#e3a07c', g = S('g');
+  if (o.longHair) g.append(inked('path', { d: 'M-62,-10 Q-82,50 -68,106 L-40,102 Q-50,60 -46,20 L46,20 Q50,60 40,102 L68,106 Q82,50 62,-10Z', fill: o.hair }, 5));
+  [-1, 1].forEach(sd => g.append(inked('circle', { cx: sd * 57, cy: 8, r: 13, fill: skin }), S('circle', { cx: sd * 57, cy: 8, r: 6, fill: shade })));
+  g.append(inked('circle', { r: 60, fill: skin }, 5),
+           S('path', { d: 'M22,-55.8 A60,60 0 0,1 22,55.8 A70,70 0 0,0 22,-55.8Z', fill: shade, opacity: .45 }));
+  if (o.beard) g.append(inked('path', { d: 'M-56,4 Q-56,66 0,66 Q56,66 56,4 Q50,40 26,44 Q0,36 -26,44 Q-50,40 -56,4Z', fill: o.hair }, 4));
+  g.append(S('ellipse', { cx: -36, cy: 26, rx: 11, ry: 7, fill: '#ff8fa3', opacity: .6 }),
+           S('ellipse', { cx: 36, cy: 26, rx: 11, ry: 7, fill: '#ff8fa3', opacity: .6 }));
+  // face paint sits on the skin, under eyes and mouth
+  const paint = {};
+  for (const k in TOON_PAINT) {
+    const p = TOON_PAINT[k], pg = S('g');
+    paint[k] = p.d.map(d => {
+      const el = S('path', { d, stroke: p.color, 'stroke-width': p.w, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+                             pathLength: 1, 'stroke-dasharray': '1 1', 'stroke-dashoffset': 1, opacity: 0 });
+      el.dataset.fill = p.fill ? p.color : '';
+      pg.append(el); return el;
+    });
+    g.append(pg);
+  }
+  const face = { g, paint, blinkT: 1 + Math.random() * 2, mouthLevel: 0, moodName: undefined };
+  Object.assign(face, toonEyes(g, { iris: o.iris, rx: o.eyeRx, ry: o.eyeRy, lashes: o.lashes }));
+  face.brows = S('g', {}, [-22, 22].map(x => S('path', { d: `M${x - 11},-15 Q${x},-22 ${x + 11},-16`, stroke: o.brow || o.hair, 'stroke-width': o.bushy ? 7 : 5.5, fill: 'none', 'stroke-linecap': 'round' })));
+  g.append(face.brows, S('path', { d: 'M-4,19 Q0,23 4,19', stroke: shade, 'stroke-width': 3.5, fill: 'none', 'stroke-linecap': 'round' }));
+  if (o.glasses) g.append(S('g', { fill: 'rgba(255,255,255,.15)', stroke: INK, 'stroke-width': 3.5 }, [
+    S('circle', { cx: -22, cy: 6, r: 17 }), S('circle', { cx: 22, cy: 6, r: 17 }), S('path', { d: 'M-5,4 Q0,0 5,4', fill: 'none' })]));
+  face.setMouth = toonMouth(g, { y: o.mustache ? 36 : 31 });
+  if (o.mustache) g.append(inked('path', { d: 'M-28,30 Q-14,18 0,27 Q14,18 28,30 Q14,38 0,32 Q-14,38 -28,30Z', fill: o.mustache }, 3.5));
+  if (o.tuft) { face.tuft = inked('path', { d: 'M2,-72 Q-6,-98 14,-104 Q6,-92 16,-76Z', fill: o.hair }, 4); g.append(face.tuft); }
+  g.append(inked('path', { d: HAIR[o.hairStyle], fill: o.hair }, 5));
+  if (o.hairStyle !== 'akela') g.append(S('path', { d: 'M-36,-56 Q-20,-66 -4,-62 M18,-62 Q34,-60 44,-48', stroke: o.hairLight || 'rgba(255,255,255,.25)', 'stroke-width': 4, fill: 'none', 'stroke-linecap': 'round' }));
+  if (o.hat === 'campaign') g.append(
+    inked('path', { d: 'M-46,-40 Q-44,-104 -20,-110 L0,-96 L20,-110 Q44,-104 46,-40Z', fill: '#a57b45' }, 4.5),
+    S('path', { d: 'M-22,-104 L-12,-50 M22,-104 L12,-50', stroke: '#8a6431', 'stroke-width': 3 }),
+    inked('rect', { x: -47, y: -54, width: 94, height: 12, rx: 3, fill: '#5a3f1c' }, 3.5),
+    inked('ellipse', { cx: 0, cy: -42, rx: 104, ry: 16, fill: '#8a6431' }, 4.5));
+  face.mood = m => { face.moodName = m; };
+  face.painted = keys => keys.forEach(k => paint[k].forEach(el => {
+    el.setAttribute('opacity', 1); el.style.strokeDashoffset = 0;
+    if (el.dataset.fill) el.setAttribute('fill', el.dataset.fill);
+  }));
+  return face;
+}
+// Blink, eyebrows and a mouth that follows the voice: shared by every cartoon face.
+function faceTick(f, dt, t, name) {
+  f.blinkT -= dt;
+  if (f.blinkT < -.14) f.blinkT = 2 + Math.random() * 3;
+  const lid = f.blinkT < 0 ? .12 : 1, joy = f.moodName === 'joy';
+  f.eyes.forEach(e => e.g.setAttribute('transform', `translate(${e.x} ${e.y}) scale(1 ${lid})`));
+  f.eyeOpen.style.display = joy ? 'none' : '';
+  f.eyeJoy.style.display = joy ? '' : 'none';
+  if (f.brows) f.brows.setAttribute('transform', `translate(0 ${f.moodName === 'wow' ? -7 : joy ? -3 : 0})`);
+  const speaking = !!(talking && talking.name === name);
+  let target = joy ? .45 : f.moodName === 'wow' ? .3 : 0, rate = 10;
+  if (speaking) {
+    rate = 22;
+    if (talking.lips && talking.audio) target = (+talking.lips[Math.floor(talking.audio.currentTime * 30)] || 0) / 9;
+    else if (!talking.audio) target = .35 + .35 * Math.sin(t * 18);
+  }
+  f.mouthLevel += (target - f.mouthLevel) * Math.min(1, dt * rate);
+  f.setMouth(f.mouthLevel);
+  return speaking;
+}
+
 class ToonActor extends Actor {
   place() {
     this.g.setAttribute('transform', `translate(${this.x.toFixed(1)},${(this.y + this.bob).toFixed(1)}) scale(${this.s}) rotate(${this.rot} 0 ${this.cy})`);
     this.squash.setAttribute('transform', `scale(${this.sx.toFixed(3)},${this.sy.toFixed(3)})`);
   }
   setLegs(a) {
-    this.legL.setAttribute('transform', `rotate(${a} -13 -96)`);
-    this.legR.setAttribute('transform', `rotate(${-a} 13 -96)`);
+    if (!this.legL) return;
+    this.legL.setAttribute('transform', `rotate(${a} ${-this.hipX} ${this.hipY})`);
+    this.legR.setAttribute('transform', `rotate(${-a} ${this.hipX} ${this.hipY})`);
   }
   walk(x, ms = 2600) {
-    const x0 = this.x, sL = this.arms.L.a, sR = this.arms.R.a;
+    const x0 = this.x, sL = this.arms.L?.a, sR = this.arms.R?.a;
     return tween(ms, (p, raw) => {
       const ph = raw * ms / 150, fade = Math.min(1, raw * 8, (1 - raw) * 8);
       this.x = x0 + (x - x0) * p;
-      this.bob = -Math.abs(Math.sin(ph)) * 7 * fade;
+      this.bob = this.legL ? -Math.abs(Math.sin(ph)) * 7 * fade : -Math.abs(Math.sin(ph * .8)) * 16 * fade;
       this.setLegs(Math.sin(ph) * 26 * fade);
-      if (!this.holding) { this.setArm('L', sL + Math.sin(ph) * 20 * fade); this.setArm('R', sR + Math.sin(ph) * 20 * fade); }
+      if (this.arms.L && !this.holding) { this.setArm('L', sL + Math.sin(ph) * 20 * fade); this.setArm('R', sR + Math.sin(ph) * 20 * fade); }
       this.place();
     }, ease.io).then(() => { this.bob = 0; this.setLegs(0); this.place(); });
   }
@@ -1080,12 +1214,12 @@ class ToonActor extends Actor {
         const q = Math.sin(raw / .22 * Math.PI / 2);
         this.sy = 1 - .15 * q; this.sx = 1 + .12 * q; this.bob = 0;
       } else if (raw < .84) {                            // airborne: stretch at take-off and landing
-        if (!launched) { launched = true; this.fx && speedLines(this.x, this.y - 20 * this.s); }
+        if (!launched) { launched = true; h > 40 && speedLines(this.x, this.y - 20 * this.s); }
         const q = (raw - .22) / .62, st = .13 * Math.abs(Math.cos(Math.PI * q));
         this.bob = -Math.sin(Math.PI * q) * h; this.sy = 1 + st; this.sx = 1 - st * .8;
         this.setLegs(Math.sin(Math.PI * q) * -8);
       } else {                                           // landing squash + wobble back
-        if (!landed) { landed = true; this.fx && dustPuff(this.x, this.y); }
+        if (!landed) { landed = true; h > 30 && dustPuff(this.x, this.y); }
         const q = (raw - .84) / .16, k = Math.sin(Math.PI * q) * (1 - q * .3);
         this.bob = 0; this.sy = 1 - .17 * k; this.sx = 1 + .15 * k; this.setLegs(0);
       }
@@ -1095,142 +1229,162 @@ class ToonActor extends Actor {
   sign(on) {  // arm angled out so the hand clears the big cartoon head
     this.holding = on;
     this.fingers.style.display = on ? '' : 'none';
-    return this.arm('L', on ? 142 : this.restL, 650);
+    return this.arm('L', on ? this.signAngle : this.restL, 650);
   }
-  mood(m) { this.moodName = m; }
+  mood(m) { this.face.moodName = m; }
   tick(dt, t) {
-    // breathing
-    this.torso.setAttribute('transform', `translate(0 -96) scale(1 ${1 + .014 * Math.sin(t * 2.4)}) translate(0 96)`);
-    // blinking
-    this.blinkT -= dt;
-    if (this.blinkT < -.14) this.blinkT = 2 + Math.random() * 3;
-    const lid = this.blinkT < 0 ? .12 : 1;
-    const joy = this.moodName === 'joy';
-    this.eyes.forEach(e => e.g.setAttribute('transform', `translate(${e.x} ${e.y}) scale(1 ${lid})`));
-    this.eyeOpen.style.display = joy ? 'none' : '';
-    this.eyeJoy.style.display = joy ? '' : 'none';
-    // eyebrows
-    const browY = this.moodName === 'wow' ? -7 : joy ? -3 : 0;
-    this.brows.setAttribute('transform', `translate(0 ${browY})`);
-    // mouth: follow the voice clip's loudness, or flap for the browser voice
-    let open = 0;
-    if (talking && talking.name === this.name) {
-      if (talking.lips && talking.audio) open = (+talking.lips[Math.floor(talking.audio.currentTime * 30)] || 0) / 9;
-      else if (!talking.audio) open = .35 + .35 * Math.sin(t * 18);
-      this.mouthLevel += (open - this.mouthLevel) * Math.min(1, dt * 22);
-    } else {
-      this.mouthLevel += ((joy ? .45 : this.moodName === 'wow' ? .3 : 0) - this.mouthLevel) * Math.min(1, dt * 10);
-    }
-    this.setMouth(this.mouthLevel);
-    // head tilt while talking
-    const tilt = (talking && talking.name === this.name) ? Math.sin(t * 3) * 3 : Math.sin(t * .8) * 1.2;
-    this.headG.setAttribute('transform', `rotate(${tilt} 0 -196)`);
-    // follow-through: hair tuft and neckerchief lag behind the body's motion
+    if (this.torso) this.torso.setAttribute('transform', `translate(0 ${this.hipY}) scale(1 ${1 + .014 * Math.sin(t * 2.4 + this.phase)}) translate(0 ${-this.hipY})`);
+    const speaking = faceTick(this.face, dt, t, this.name);
+    const tilt = speaking ? Math.sin(t * 3) * 3 : Math.sin(t * .8 + this.phase) * 1.2;
+    this.headG.setAttribute('transform', `rotate(${tilt} 0 ${this.neckY})`);
+    // follow-through: loose parts lag behind the body's motion
     const vy = (this.bob - (this.lastBob ?? this.bob)) / Math.max(dt, .001);
     this.lastBob = this.bob;
     this.spring.v += ((-vy * .06) - this.spring.a) * 90 * dt;
     this.spring.v *= Math.pow(.02, dt);
     this.spring.a = Math.max(-35, Math.min(35, this.spring.a + this.spring.v * dt));
-    this.tuft.setAttribute('transform', `rotate(${this.spring.a} 8 -74)`);
-    this.kerchief.setAttribute('transform', `rotate(${this.spring.a * .5} 0 -150)`);
+    if (this.face.tuft) this.face.tuft.setAttribute('transform', `rotate(${this.spring.a} 8 -74)`);
+    if (this.kerchief) this.kerchief.setAttribute('transform', `rotate(${this.spring.a * .5} 0 ${this.kerchiefY})`);
+    if (this.tail) this.tail.setAttribute('transform', `rotate(${Math.sin(t * 7) * 16 + this.spring.a} ${this.tailPivot})`);
   }
 }
+function newToon(g, squash, props, parts) {
+  actorsL.append(g);
+  const a = new ToonActor(g, { squash, sx: 1, sy: 1, ...props });
+  Object.assign(a, { spring: { a: 0, v: 0 }, phase: Math.random() * 6, fx: true }, parts);
+  a.head = a.face;
+  a.place();
+  TOONS.push(a);
+  return a;
+}
+const toonShadow = rx => S('ellipse', { cx: 0, cy: 2, rx, ry: 8, fill: 'rgba(0,0,0,.25)' });
+function toonLeg(sd, { x, y, w, h, pants, shoe }) {
+  const lg = S('g'), fx = sd < 0 ? -x - w : x;
+  lg.append(inked('rect', { x: fx, y, width: w, height: h, rx: w * .42, fill: pants }),
+            inked('path', { d: sd < 0 ? `M${fx - 6},-22 Q${fx - 6},-34 ${fx + 6},-34 L${fx + w - 2},-34 Q${fx + w + 6},-34 ${fx + w + 8},-22 L${fx + w + 8},-12 L${fx - 8},-12Z`
+                                      : `M${fx + w + 6},-22 Q${fx + w + 6},-34 ${fx + w - 6},-34 L${fx + 2},-34 Q${fx - 6},-34 ${fx - 8},-22 L${fx - 8},-12 L${fx + w + 8},-12Z`, fill: shoe }),
+            inked('rect', { x: fx - 10, y: -14, width: w + 20, height: 10, rx: 5, fill: '#fff' }, 3.5));
+  return lg;
+}
+function toonArm(sd, { shoulder, len, sleeve, sleeveShade, skin, fingers }) {
+  const ag = S('g'), [sx, sy] = shoulder, hx = sd * (Math.abs(sx) + 7), hy = sy + len;
+  if (fingers) ag.append(fingers);
+  ag.append(inked('rect', { x: hx - 8.5, y: sy + 24, width: 17, height: len - 22, rx: 8.5, fill: skin }),
+            inked('circle', { cx: hx, cy: hy, r: 12, fill: skin }),
+            shaded(inked('path', { d: `M${sd * (Math.abs(sx) - 6)},${sy - 8} Q${sd * (Math.abs(sx) + 18)},${sy - 2} ${sd * (Math.abs(sx) + 20)},${sy + 30} L${sd * (Math.abs(sx) - 4)},${sy + 34}Z`, fill: sleeve }),
+                   `M${sd * (Math.abs(sx) - 10)},${sy + 14} L${sd * (Math.abs(sx) + 30)},${sy + 14} L${sd * (Math.abs(sx) + 30)},${sy + 44} L${sd * (Math.abs(sx) - 10)},${sy + 44}Z`, sleeveShade));
+  return { el: ag, px: sx, py: sy, hand: [hx, hy] };
+}
+// two fingers together, turned so they point straight up when the arm is at `angle`
+const toonFingers = (hand, angle, skin, size = 1) => S('g', { style: 'display:none', transform: `rotate(${180 - angle} ${hand[0]} ${hand[1]})` },
+  [-1, 0].map(i => inked('rect', { x: hand[0] + i * 8 * size, y: hand[1] - 4, width: 8 * size, height: 32 * size, rx: 4 * size, fill: skin }, 3)));
 
 function makeToonCub(name = 'Max') {
-  const skin = '#f7c9a3', skinShade = '#e3a07c', shirt = '#26357a', shirtShade = '#17225a',
-        pants = '#1c2750', hair = '#3a2518';
+  const skin = '#f7c9a3', shirt = '#26357a', shirtShade = '#17225a', pants = '#1c2750';
   const g = S('g'), squash = S('g');
-  g.append(S('ellipse', { cx: 0, cy: 2, rx: 44, ry: 8, fill: 'rgba(0,0,0,.25)' }), squash);
-  const leg = sd => {
-    const lg = S('g');
-    lg.append(inked('rect', { x: sd < 0 ? -26 : 3, y: -104, width: 23, height: 84, rx: 10, fill: pants }),
-              inked('path', { d: sd < 0 ? 'M-31,-22 Q-31,-34 -19,-34 L-7,-34 Q2,-34 4,-22 L4,-12 L-33,-12Z'
-                                        : 'M31,-22 Q31,-34 19,-34 L7,-34 Q-2,-34 -4,-22 L-4,-12 L33,-12Z', fill: '#2d3f8f' }),
-              inked('rect', { x: sd < 0 ? -35 : -5, y: -14, width: 40, height: 10, rx: 5, fill: '#fff' }, 3.5),
-              S('path', { d: sd < 0 ? 'M-22,-30 L-12,-30 M-21,-25 L-11,-25' : 'M22,-30 L12,-30 M21,-25 L11,-25', stroke: '#fff', 'stroke-width': 2.2, 'stroke-linecap': 'round' }));
-    return lg;
-  };
-  const legL = leg(-1), legR = leg(1);
-  // two fingers together, turned so they point straight up when the arm is raised (142°)
-  const fingers = S('g', { style: 'display:none', transform: 'rotate(38 -47 -100)' }, [-1, 0].map(i =>
-    inked('rect', { x: -47 + i * 8, y: -104, width: 8, height: 32, rx: 4, fill: skin }, 3)));
-  const arm = sd => {
-    const ag = S('g');
-    if (sd < 0) ag.append(fingers);
-    ag.append(inked('rect', { x: sd * 47 - 8, y: -150, width: 16, height: 48, rx: 8, fill: skin }),
-              inked('circle', { cx: sd * 47, cy: -100, r: 11, fill: skin }),
-              shaded(inked('path', { d: `M${sd * 36},-182 Q${sd * 58},-176 ${sd * 60},-146 L${sd * 36},-142Z`, fill: shirt }),
-                     `M${sd * 30},-160 L${sd * 70},-160 L${sd * 70},-130 L${sd * 30},-130Z`, shirtShade));
-    return ag;
-  };
-  const armL = arm(-1), armR = arm(1);
-  // torso
+  g.append(toonShadow(44), squash);
+  const legL = toonLeg(-1, { x: 3, y: -104, w: 23, h: 84, pants, shoe: '#2d3f8f' }), legR = toonLeg(1, { x: 3, y: -104, w: 23, h: 84, pants, shoe: '#2d3f8f' });
+  const fingers = toonFingers([-47, -100], 142, skin);
+  const L = toonArm(-1, { shoulder: [-40, -174], len: 74, sleeve: shirt, sleeveShade: shirtShade, skin, fingers }),
+        R = toonArm(1, { shoulder: [40, -174], len: 74, sleeve: shirt, sleeveShade: shirtShade, skin });
   const torso = S('g');
-  const shirtShape = inked('path', { d: 'M-40,-182 Q-48,-124 -40,-94 L40,-94 Q48,-124 40,-182 Q0,-194 -40,-182Z', fill: shirt });
-  torso.append(shaded(shirtShape, 'M12,-200 Q34,-150 24,-90 L70,-90 L70,-200Z', shirtShade));
+  torso.append(shaded(inked('path', { d: 'M-40,-182 Q-48,-124 -40,-94 L40,-94 Q48,-124 40,-182 Q0,-194 -40,-182Z', fill: shirt }),
+                      'M12,-200 Q34,-150 24,-90 L70,-90 L70,-200Z', shirtShade));
   [-1, 1].forEach(sd => torso.append(
     inked('rect', { x: sd < 0 ? -32 : 12, y: -150, width: 20, height: 22, rx: 4, fill: shirt }, 3),
     inked('path', { d: `M${sd < 0 ? -33 : 11},-150 L${sd < 0 ? -11 : 33},-150 L${sd < 0 ? -11 : 33},-142 Q${sd * 22},-138 ${sd < 0 ? -33 : 11},-142Z`, fill: shirtShade }, 3),
     S('circle', { cx: sd * 22, cy: -142, r: 2.2, fill: '#c9b27a' })));
   torso.append(inked('circle', { cx: 22, cy: -121, r: 7, fill: '#fff' }, 2.5), S('path', { d: 'M22,-126 Q19,-121 22,-116 Q25,-121 22,-126Z', fill: '#6a4fb0' }));
-  torso.append(inked('rect', { x: -41, y: -104, width: 82, height: 12, rx: 3, fill: '#141c3c' }, 3.5),
+  const badge = S('text', { x: -22, y: -120, 'text-anchor': 'middle', 'font-size': 9, 'font-weight': 800, fill: '#f5b700', stroke: INK, 'stroke-width': 2,
+                            'paint-order': 'stroke', 'font-family': '"Baloo 2", sans-serif', style: 'display:none' }, 'BOBCAT');
+  torso.append(badge, inked('rect', { x: -41, y: -104, width: 82, height: 12, rx: 3, fill: '#141c3c' }, 3.5),
                inked('rect', { x: -8, y: -106, width: 16, height: 15, rx: 3, fill: '#f5b700' }, 3));
   const k = kerchiefShape(v => v, { collarY: -182, sideX: 34, slideY: -150, tailY: -112, w: 11, color: '#d4e6f8', stripe: '#3b5da8', slide: '#b07d4a', ink: INK, inkW: 2.5 });
-  const kerchief = S('g', {}, k.tails);   // the loose ends swing a little after the body moves
+  const kerchief = S('g', {}, k.tails);
   torso.append(kerchief, k.bands, k.knot);
-  // head
-  const headG = S('g'), head = S('g', { transform: 'translate(0,-250)' });
-  headG.append(head);
-  [-1, 1].forEach(sd => head.append(inked('circle', { cx: sd * 57, cy: 8, r: 13, fill: skin }), S('circle', { cx: sd * 57, cy: 8, r: 6, fill: skinShade })));
-  head.append(inked('circle', { r: 60, fill: skin }, 5),
-              S('path', { d: 'M22,-55.8 A60,60 0 0,1 22,55.8 A70,70 0 0,0 22,-55.8Z', fill: skinShade, opacity: .45 }));
-  const tuft = inked('path', { d: 'M2,-72 Q-6,-98 14,-104 Q6,-92 16,-76Z', fill: hair }, 4);
-  head.append(tuft,
-              inked('path', { d: 'M-58,-6 Q-68,-66 -20,-72 Q-4,-84 14,-74 Q54,-76 60,-28 Q62,-14 58,-4 Q50,-32 32,-36 L25,-26 L15,-40 L3,-28 L-9,-42 L-21,-28 L-32,-38 Q-52,-30 -58,-6Z', fill: hair }, 5),
-              S('path', { d: 'M-36,-56 Q-20,-66 -4,-62 M18,-62 Q34,-60 44,-48', stroke: '#6b4630', 'stroke-width': 4, fill: 'none', 'stroke-linecap': 'round' }));
-  const eyeOpen = S('g'), eyeJoy = S('g', { style: 'display:none' }), eyes = [];
-  [-22, 22].forEach(x => {
-    const e = S('g');
-    e.append(inked('ellipse', { cx: 0, cy: 0, rx: 13, ry: 15.5, fill: '#fff' }, 3.5),
-             S('circle', { cx: 1.5, cy: 2.5, r: 9.5, fill: '#6b4424' }),
-             S('circle', { cx: 1.5, cy: 3, r: 5.2, fill: '#1c1224' }),
-             S('circle', { cx: 5, cy: -2.5, r: 3.4, fill: '#fff' }),
-             S('circle', { cx: -2.5, cy: 7, r: 1.6, fill: '#fff' }));
-    eyes.push({ g: e, x, y: 6 });
-    eyeOpen.append(e);
-    eyeJoy.append(S('path', { d: `M${x - 11},10 Q${x},-4 ${x + 11},10`, stroke: INK, 'stroke-width': 5, fill: 'none', 'stroke-linecap': 'round' }));
-  });
-  const brows = S('g', {}, [-22, 22].map(x => S('path', { d: `M${x - 11},-15 Q${x},${-22} ${x + 11},-16`, stroke: hair, 'stroke-width': 5.5, fill: 'none', 'stroke-linecap': 'round' })));
-  head.append(eyeOpen, eyeJoy, brows,
-              S('ellipse', { cx: -36, cy: 26, rx: 11, ry: 7, fill: '#ff8fa3', opacity: .6 }),
-              S('ellipse', { cx: 36, cy: 26, rx: 11, ry: 7, fill: '#ff8fa3', opacity: .6 }),
-              S('path', { d: 'M-4,19 Q0,23 4,19', stroke: skinShade, 'stroke-width': 3.5, fill: 'none', 'stroke-linecap': 'round' }));
-  const mouthOpen = inked('path', { fill: '#7a2335' }, 3.5), tongue = S('ellipse', { rx: 7, fill: '#ff7b93' }),
-        teeth = S('rect', { x: -9, width: 18, height: 4.5, rx: 2, fill: '#fff' }),
-        mouthSmile = S('path', { d: 'M-14,32 Q0,42 14,32', stroke: INK, 'stroke-width': 4.5, fill: 'none', 'stroke-linecap': 'round' });
-  head.append(mouthSmile, mouthOpen, teeth, tongue);
-  squash.append(legL, legR, armR, torso, headG, armL);
-  actorsL.append(g);
-  const a = new ToonActor(g, { name, color: '#2456b8', squash, sx: 1, sy: 1, headTop: -358, cy: -170, fingers,
-                               voice: { pitch: 1.55, rate: 1.08 } });
-  Object.assign(a, { legL, legR, torso, headG, kerchief, tuft, eyes, eyeOpen, eyeJoy, brows, fx: true,
-                     blinkT: 2, mouthLevel: 0, spring: { a: 0, v: 0 }, moodName: undefined, restL: 10 });
-  a.setMouth = o => {
-    const open = o > .06;
-    mouthSmile.style.display = open ? 'none' : '';
-    [mouthOpen, teeth, tongue].forEach(el => el.style.display = open ? '' : 'none');
-    if (!open) return;
-    const w = 13 + o * 4, d = 8 + o * 22;
-    mouthOpen.setAttribute('d', `M${-w},31 Q0,35 ${w},31 Q${w * .8},${31 + d * .8} 0,${31 + d} Q${-w * .8},${31 + d * .8} ${-w},31Z`);
-    teeth.setAttribute('y', 31.5);
-    tongue.setAttribute('cy', 31 + d * .72); tongue.setAttribute('ry', 2 + d * .18);
-    tongue.style.display = o > .3 ? '' : 'none';
-  };
-  a.arms = { L: { el: armL, px: -40, py: -174, a: 0 }, R: { el: armR, px: 40, py: -174, a: 0 } };
+  const face = makeToonHead({ skin, hair: '#3a2518', hairStyle: 'max', tuft: true, hairLight: '#6b4630' });
+  const headG = S('g', {}, S('g', { transform: 'translate(0,-250)' }, face.g));
+  squash.append(legL, legR, R.el, torso, headG, L.el);
+  const a = newToon(g, squash, { name, color: '#2456b8', headTop: -358, cy: -170, voice: { pitch: 1.55, rate: 1.08 } },
+    { face, legL, legR, torso, headG, kerchief, fingers, badge, hipX: 13, hipY: -96, neckY: -196, kerchiefY: -150, restL: 10, signAngle: 142 });
+  a.arms = { L: { el: L.el, px: L.px, py: L.py, a: 0 }, R: { el: R.el, px: R.px, py: R.py, a: 0 } };
   a.setArm('L', 10); a.setArm('R', -10);
-  a.place();
-  TOONS.push(a);
   return a;
+}
+
+function makeToonAdult(o) {
+  const skin = o.skin, g = S('g'), squash = S('g');
+  g.append(toonShadow(56), squash);
+  const legL = toonLeg(-1, { x: 4, y: -132, w: 27, h: 118, pants: o.pants, shoe: o.shoe || '#4a3526' }),
+        legR = toonLeg(1, { x: 4, y: -132, w: 27, h: 118, pants: o.pants, shoe: o.shoe || '#4a3526' });
+  const fingers = toonFingers([-58, -160], 150, skin, 1.1);
+  const L = toonArm(-1, { shoulder: [-51, -262], len: 102, sleeve: o.shirt, sleeveShade: o.shirtShade, skin, fingers }),
+        R = toonArm(1, { shoulder: [51, -262], len: 102, sleeve: o.shirt, sleeveShade: o.shirtShade, skin });
+  const torso = S('g');
+  torso.append(inked('rect', { x: -14, y: -292, width: 28, height: 30, fill: skin }, 4));
+  torso.append(shaded(inked('path', { d: 'M-54,-270 Q-62,-196 -52,-124 L52,-124 Q62,-196 54,-270 Q0,-284 -54,-270Z', fill: o.shirt }),
+                      'M16,-290 Q42,-200 30,-118 L80,-118 L80,-290Z', o.shirtShade));
+  torso.append(inked('path', { d: 'M-16,-273 Q0,-258 16,-273', fill: skin }, 3.5));
+  let kerchief = null;
+  if (o.tee) torso.append(
+    S('text', { x: 0, y: -200, 'text-anchor': 'middle', 'font-size': 20, 'font-weight': 800, fill: '#fff', stroke: INK, 'stroke-width': 3, 'paint-order': 'stroke', 'font-family': '"Baloo 2", sans-serif' }, 'PACK 149'),
+    S('text', { x: 0, y: -178, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 800, fill: '#ffd86a', stroke: INK, 'stroke-width': 2.5, 'paint-order': 'stroke', 'font-family': '"Baloo 2", sans-serif' }, o.tee));
+  if (o.leader) {
+    [-1, 1].forEach(sd => torso.append(
+      inked('rect', { x: sd < 0 ? -42 : 14, y: -226, width: 28, height: 30, rx: 4, fill: o.shirt }, 3),
+      inked('path', { d: `M${sd < 0 ? -43 : 13},-226 L${sd < 0 ? -13 : 43},-226 L${sd < 0 ? -13 : 43},-216 Q${sd * 28},-211 ${sd < 0 ? -43 : 13},-216Z`, fill: o.shirtShade }, 3),
+      inked('rect', { x: sd * 40 - 12, y: -272, width: 24, height: 9, rx: 3, fill: '#55633a' }, 3)));
+    torso.append(inked('rect', { x: 14, y: -190, width: 34, height: 15, rx: 3, fill: '#fff' }, 2.5),
+                 S('text', { x: 31, y: -179, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 800, fill: INK, 'font-family': 'sans-serif' }, 'AKELA'),
+                 inked('rect', { x: -53, y: -136, width: 106, height: 13, rx: 3, fill: '#4a3a20' }, 3.5),
+                 inked('rect', { x: -9, y: -138, width: 18, height: 17, rx: 3, fill: '#c9b27a' }, 3));
+    const k = kerchiefShape(v => v, { collarY: -270, sideX: 44, slideY: -232, tailY: -190, w: 13, color: '#2456b8', stripe: '#f5b700', slide: '#f5b700', ink: INK, inkW: 2.5 });
+    kerchief = S('g', {}, k.tails);
+    torso.append(kerchief, k.bands, k.knot);
+  }
+  const face = makeToonHead(o);
+  const headG = S('g', {}, S('g', { transform: 'translate(0,-340) scale(.95)' }, face.g));
+  squash.append(legL, legR, R.el, torso, headG, L.el);
+  const a = newToon(g, squash, { name: o.name, color: o.color, headTop: o.hat === 'campaign' ? -460 : -420, cy: -220, voice: o.voice },
+    { face, legL, legR, torso, headG, kerchief, fingers, hipX: 17, hipY: -126, neckY: -290, kerchiefY: -232, restL: 6, signAngle: 150 });
+  a.arms = { L: { el: L.el, px: L.px, py: L.py, a: 0 }, R: { el: R.el, px: R.px, py: R.py, a: 0 } };
+  a.setArm('L', 6); a.setArm('R', -6);
+  return a;
+}
+
+function makeToonCat() {
+  const fur = '#dca35f', furShade = '#b97f3d', light = '#f8ead0', spot = '#8a5a2b';
+  const g = S('g'), squash = S('g');
+  g.append(toonShadow(46), squash);
+  const tail = S('g', {}, [inked('path', { d: 'M34,-30 Q60,-44 66,-28 Q70,-16 52,-18 Q40,-18 34,-24Z', fill: fur }, 4),
+                           inked('path', { d: 'M58,-38 Q72,-34 66,-22 Q62,-30 58,-38Z', fill: '#2b2140' }, 3)]);
+  const body = S('g');
+  body.append(shaded(inked('path', { d: 'M-40,-6 Q-52,-60 -26,-96 Q0,-112 26,-96 Q52,-60 40,-6Z', fill: fur }),
+                     'M14,-120 Q44,-70 30,0 L70,0 L70,-120Z', furShade),
+              S('path', { d: 'M-22,-10 Q-30,-56 0,-78 Q30,-56 22,-10Z', fill: light }));
+  [[-32, -62], [-35, -38], [32, -64], [34, -36], [-22, -84], [22, -86]].forEach(([x, y]) => body.append(S('ellipse', { cx: x, cy: y, rx: 4.5, ry: 3.5, fill: spot })));
+  body.append(inked('ellipse', { cx: -17, cy: -8, rx: 14, ry: 10, fill: light }, 4), inked('ellipse', { cx: 17, cy: -8, rx: 14, ry: 10, fill: light }, 4),
+              S('path', { d: 'M-22,-8 L-22,-2 M-12,-8 L-12,-2 M12,-8 L12,-2 M22,-8 L22,-2', stroke: INK, 'stroke-width': 2.5, 'stroke-linecap': 'round' }));
+  const head = S('g', { transform: 'translate(0,-128)' });
+  [-1, 1].forEach(sd => head.append(
+    inked('path', { d: `M${sd * 40},-14 L${sd * 32},-66 L${sd * 8},-34Z`, fill: fur }, 4.5),
+    S('path', { d: `M${sd * 33},-22 L${sd * 30},-52 L${sd * 16},-34Z`, fill: '#f3a3a3' }),
+    S('path', { d: `M${sd * 32},-66 L${sd * 30},-88`, stroke: INK, 'stroke-width': 5, 'stroke-linecap': 'round' }),
+    inked('path', { d: `M${sd * 44},-8 L${sd * 62},4 L${sd * 46},10 L${sd * 58},24 L${sd * 38},22Z`, fill: fur }, 4)));
+  head.append(inked('ellipse', { cx: 0, cy: 0, rx: 50, ry: 43, fill: fur }, 5),
+              S('path', { d: 'M20,-39 A50,43 0 0,1 20,39 A58,50 0 0,0 20,-39Z', fill: furShade, opacity: .45 }));
+  [-9, 0, 9].forEach(x => head.append(S('path', { d: `M${x},-40 L${x},-28`, stroke: spot, 'stroke-width': 3.5, 'stroke-linecap': 'round' })));
+  const face = { g: head, blinkT: 1.5, mouthLevel: 0, moodName: undefined };
+  Object.assign(face, toonEyes(head, { xs: [-19, 19], y: -6, rx: 12, ry: 14, iris: '#5fae4a' }));
+  head.append(inked('ellipse', { cx: -11, cy: 17, rx: 14, ry: 11, fill: light }, 3.5), inked('ellipse', { cx: 11, cy: 17, rx: 14, ry: 11, fill: light }, 3.5));
+  face.setMouth = toonMouth(head, { y: 22, w: 8, depth: 14 });
+  head.append(inked('path', { d: 'M-7,7 L7,7 L0,15Z', fill: '#f07a8a' }, 3));
+  [-1, 1].forEach(sd => [11, 19].forEach(y => head.append(S('path', { d: `M${sd * 24},${y} L${sd * 50},${y - 4 + (y - 11) * .8}`, stroke: '#fff', 'stroke-width': 2 }))));
+  face.mood = m => { face.moodName = m; };
+  const headG = S('g', {}, head);
+  squash.append(tail, body, headG);
+  return newToon(g, squash, { name: 'Bobcat', color: '#b0772e', headTop: -225, cy: -80, voice: { pitch: 1.9, rate: 1.12 } },
+    { face, headG, tail, neckY: -96, tailPivot: '34 -26', arms: {} });
 }
 
 // comic effects
@@ -1269,7 +1423,7 @@ function popIcon(x, y, kind) {
 async function scenePilot(style) {
   const toon = style === 'toon';
   const max = toon ? makeToonCub('Max') : makeCub('Max');
-  if (toon) $('#firelight').style.display = '';
+  $('#firelight').style.display = toon ? '' : 'none';
   const fx = (fn) => toon && fn();
   max.at(-160);
   setCaption('Preview', toon ? 'New cartoon style' : 'Current style', '#6b4f9e');
@@ -1311,61 +1465,126 @@ async function runPilot(style) {
   const id = ++RUN;
   stopClip(); setPaused(false); resetStage(); music.setMood('calm');
   setBackdrop(style === 'toon' ? pilotBg : 'none');
+  $('#bush').style.display = style === 'toon' ? 'none' : '';
   try { await scenePilot(style); } catch (e) { if (e !== CANCEL) console.error(e); }
 }
 
 // ---------- scenes ----------
+// ---------- staging: one cast for the whole story, camera shots, transitions ----------
+let CAST = null;
 const POS = { dad: 230, mom: 385, max: 545, akela: 1100, cat: 880 };
-function stand(c, pos = POS) { for (const k in pos) c[k].at(pos[k]); }
+const OFF = { dad: -500, mom: -500, max: -500, akela: W + 500, cat: W + 500 };
+// Bring the cast to a scene's marks: walk there when continuing, jump there when starting fresh.
+async function castTo(pos, { snap = false, keepCam = false } = {}) {
+  const fresh = !CAST;
+  if (fresh) CAST = makeCast();
+  const c = CAST, moves = [];
+  for (const k in c) {
+    const a = c[k];
+    a.mood(); a.holding = false; a.rot = 0;
+    if (a.fingers) a.fingers.style.display = 'none';
+    if (a.arms.L) { a.setArm('L', a.restL); a.setArm('R', -a.restL); }
+    if (a.y !== GROUND) a.at(a.x, GROUND);
+    if (!(k in pos)) continue;
+    const far = a.x < -150 || a.x > W + 150 || pos[k] < -150 || pos[k] > W + 150;
+    if (fresh || snap || far || Math.abs(a.x - pos[k]) < 2) a.at(pos[k]);
+    else moves.push(a.walk(pos[k], Math.min(1300, 350 + Math.abs(a.x - pos[k]) * 2)));
+  }
+  if (!keepCam && (cam.z !== 1 || cam.x !== W / 2 || cam.y !== HGT / 2)) moves.push(wide(800));
+  await all(...moves);
+  return c;
+}
+function clampCam(x, y, z) {
+  const hw = W / 2 / z, hh = HGT / 2 / z;
+  return [Math.max(hw, Math.min(W - hw, x)), Math.max(hh - 72, Math.min(781 - hh, y)), z];
+}
+const wide = (ms = 800) => camera(W / 2, HGT / 2, 1, ms);
+// frame a character's head and shoulders
+const focus = (a, z = 1.5, ms = 700) => camera(...clampCam(a.x, a.top() + (a.y - a.top()) * .42, z), ms);
+const toScreen = (x, y) => [(x - cam.x) * cam.z + W / 2, (y - cam.y) * cam.z + HGT / 2];
+function shake(ms = 450, amp = 12) {
+  const base = { ...cam };
+  return tween(ms, (p, raw) => {
+    const k = amp * (1 - raw);
+    setCam(base.x + Math.sin(raw * 70) * k / base.z, base.y + Math.cos(raw * 53) * k / base.z, base.z);
+  }, ease.lin).then(() => setCam(base.x, base.y, base.z));
+}
+let irisR = 70;   // iris radius in % of the stage width; 70 = fully open
+function irisTo(r, ms = 700, x = W / 2, y = HGT / 2) {
+  const el = $('#iris'), r0 = irisR;
+  el.style.setProperty('--ix', (x / W * 100) + '%');
+  el.style.setProperty('--iy', (y / HGT * 100) + '%');
+  el.style.display = '';
+  return tween(ms, p => { irisR = r0 + (r - r0) * p; el.style.setProperty('--ir', irisR.toFixed(2)); }, ease.io)
+    .then(() => { if (irisR >= 70) el.style.display = 'none'; });
+}
+function fireFlare() {
+  const f = $('#fire');
+  burst(FIRE_X, GROUND - 90, ['#ffd36a', '#ff8a3a', '#fff1a8'], 16, 110, 4);
+  return tween(700, (p, raw) => f.setAttribute('transform',
+    `translate(${FIRE_X},${GROUND + 8}) scale(${(.85 * (1 + .45 * Math.sin(Math.PI * raw) * (1 - raw * .4))).toFixed(3)})`), ease.lin);
+}
+function bushSettle(ms = 1400, amp = 9) {   // the bush keeps swaying after the Bobcat leaves it
+  return tween(ms, (p, raw) => setBush(Math.sin(raw * 26) * amp * Math.exp(-raw * 4)), ease.lin).then(() => setBush(0));
+}
+const faceSpot = a => toScreen(a.x, a.top() + 95 * a.s);
 
 async function sceneWelcome() {
-  const c = makeCast();
+  const c = await castTo({ ...OFF, cat: -120 }, { snap: true });
+  setCam(W / 2, 250, 1.25);                     // open on the night sky, then tilt down to the clearing
   const t = H('div', 'titlecard', `<div class="k">Cub Scout Pack 149 presents</div><h1>The Painted Bobcat</h1>
     <div class="t">A tale of <b>Family</b>, <b>Fun</b> &amp; <b>Adventure</b></div>`);
   overlay.append(t);
-  c.cat.at(-120);
-  await all(c.cat.walk(640, 3800), narrate('Once upon a starry night, deep in the woods where Pack 149 gathers around the campfire, it was time for a Bobcat ceremony...'));
-  sfx.rawr();
-  await all(c.cat.jump(40), say(c.cat, 'Rawr! That’s Bobcat for “hello!”'));
+  await all(camera(W / 2, HGT / 2, 1, 3200), c.cat.walk(640, 3800),
+            narrate('Once upon a starry night, deep in the woods where Pack 149 gathers around the campfire, it was time for a Bobcat ceremony...'));
+  sfx.rawr(); fireFlare();
+  await all(c.cat.jump(50), say(c.cat, 'Rawr! That’s Bobcat for “hello!”'));
   t.classList.add('out');
-  await all(c.cat.walk(1400, 2400), wait(900));
+  await all(c.cat.walk(1400, 2000), wait(700));
 }
 
 async function sceneFamily() {
   chapter('Chapter One', 'Family');
-  const c = makeCast();
-  c.dad.at(-420); c.mom.at(-270); c.max.at(-110); c.akela.at(1450);
-  await all(c.dad.walk(POS.dad, 4200), c.mom.walk(POS.mom, 4200), c.max.walk(POS.max, 4200),
+  const c = await castTo({ ...OFF, dad: -420, mom: -270, max: -110 }, { snap: true, keepCam: true });
+  const famShot = clampCam(400, 430, 1.3);
+  setCam(...famShot);
+  await all(c.dad.walk(POS.dad, 3600), c.mom.walk(POS.mom, 3600), c.max.walk(POS.max, 3600),
             narrate('Meet Max! Tonight, Max and his mom and dad are heading to the Pack 149 campfire for a very special night.'));
   c.max.mood('joy');
+  await focus(c.max, 1.75, 450);
   await all(c.max.hop(3), say(c.max, 'Is it tonight? Is it REALLY tonight?!'));
   c.max.mood();
+  await camera(...famShot, 500);
   await say(c.mom, 'It really is, sweetie!');
   await say(c.dad, 'We’re so proud of you, buddy.');
-  await all(c.akela.walk(POS.akela, 2600), narrate('Here comes Akela. That’s what Cub Scouts call their leader.'));
-  await all(c.akela.wave(2000), say(c.akela, 'Welcome, Max! Tonight you earn your Bobcat, the very first step on the Cub Scout trail!'));
+  c.akela.at(1450);
+  await all(wide(900), c.akela.walk(POS.akela, 2400), narrate('Here comes Akela. That’s what Cub Scouts call their leader.'));
+  await all(c.akela.wave(1800), say(c.akela, 'Welcome, Max! Tonight you earn your Bobcat, the very first step on the Cub Scout trail!'));
   c.max.mood('joy'); sfx.boing();
-  await all(c.max.jump(70, 550), wait(700));
+  await all(c.max.jump(80, 600), wait(500));
 }
 
 async function sceneBobcat() {
-  const c = makeCast(); stand(c); c.cat.at(BUSH_X, GROUND + 140);
-  const shake = tween(1600, (p, raw) => setBush(Math.sin(raw * 40) * 5 * (1 - raw)), ease.lin);
-  c.max.mood('wow');
-  await all(shake, narrate('Rustle, rustle... what’s that in the bushes?'));
+  const c = await castTo(POS);
+  c.cat.at(BUSH_X, GROUND + 150);
+  c.max.mood('wow'); c.mom.mood('wow');
+  const shake1 = tween(1500, (p, raw) => setBush(Math.sin(raw * 40) * 6 * (1 - raw * .5)), ease.lin);
+  await all(camera(...clampCam(930, 470, 1.6), 1100), shake1, narrate('Rustle, rustle... what’s that in the bushes?'));
   sfx.chime();
-  await tween(500, p => c.cat.at(BUSH_X, GROUND + 140 - 140 * p), ease.back);
-  sparkleAt(BUSH_X, GROUND - 160);
+  bushSettle();
+  await tween(450, p => c.cat.at(BUSH_X, GROUND + 150 - 150 * p), ease.back);
+  sparkleAt(BUSH_X, GROUND - 170);
   await say(c.cat, 'Psst! I’m the Bobcat! Every Cub Scout adventure starts with me.');
-  c.max.mood('joy');
-  await c.cat.walk(POS.cat, 1100);
+  c.max.mood('joy'); c.mom.mood();
+  bushSettle(1200, 7);
+  await all(wide(800), c.cat.walk(POS.cat, 900));
   c.max.mood();
   await say(c.cat, 'To earn your Bobcat, you need to know three big things...');
   const three = H('div', 'three');
   overlay.append(three);
   for (const [e, t] of [['✋', 'The Scout Oath'], ['📜', 'The Scout Law'], ['⭐', 'The Motto']]) {
     three.append(H('div', '', `<span>${e}</span>${t}`)); sfx.pop();
-    await wait(750);
+    await wait(650);
   }
   c.max.mood('joy');
   await all(c.max.hop(2), say(c.max, 'I’ve been practicing all month!'));
@@ -1373,13 +1592,13 @@ async function sceneBobcat() {
 
 const OATH_POS = { dad: 110, mom: 255, max: 405, akela: 570, cat: 690 };
 async function sceneOath() {
-  const c = makeCast(); stand(c, OATH_POS);
+  const c = await castTo(OATH_POS);
   await say(c.akela, 'Max, please give the Cub Scout sign and say the Scout Oath.');
   await all(c.max.sign(true), c.mom.sign(true), c.dad.sign(true), c.akela.sign(true));
   const panel = H('div', 'panel', '<h2>The Scout Oath</h2>');
   OATH.forEach(([e, t]) => panel.append(H('div', 'ol', `<span class="e">${e}</span><span>${t}</span>`)));
   overlay.append(panel);
-  await wait(700);
+  await wait(600);
   const lines = panel.querySelectorAll('.ol');
   for (let i = 0; i < OATH.length; i++) {
     lines.forEach(l => l.classList.remove('now'));
@@ -1390,11 +1609,11 @@ async function sceneOath() {
   lines.forEach(l => l.classList.remove('now'));
   await all(c.max.sign(false), c.mom.sign(false), c.dad.sign(false), c.akela.sign(false));
   sfx.chime();
-  await all(c.cat.spin(), c.cat.jump(60, 800), say(c.akela, 'Perfect! You said that with your whole heart.'));
+  await all(c.cat.spin(), c.cat.jump(70, 800), say(c.akela, 'Perfect! You said that with your whole heart.'));
 }
 
 async function sceneLaw() {
-  const c = makeCast(); stand(c, OATH_POS);
+  const c = await castTo(OATH_POS);
   const panel = H('div', 'panel', '<h2>The Scout Law</h2><div style="text-align:center;font-size:2cqw;font-weight:700">A Scout is...</div>');
   const grid = H('div', 'lawgrid');
   LAW.forEach(([e, t], i) => grid.append(H('div', 'lb' + (i % 2 ? ' gold' : ''), `<span>${e}</span>${t}`)));
@@ -1411,81 +1630,82 @@ async function sceneLaw() {
   }
   grid.classList.add('dance');
   c.max.mood('joy'); sfx.chime();
-  await all(c.mom.jump(30), say(c.mom, 'Wow! Twelve out of twelve!'));
-  await all(c.dad.jump(30), say(c.dad, 'That’s our Cub Scout!'));
+  await all(c.mom.jump(35), say(c.mom, 'Wow! Twelve out of twelve!'));
+  await all(c.dad.jump(35), say(c.dad, 'That’s our Cub Scout!'));
 }
 
 async function sceneMotto() {
   chapter('Chapter Two', 'Fun');
-  const c = makeCast(); stand(c);
-  await wait(900);
+  const c = await castTo(POS);
   await say(c.akela, 'And last but not least... what is our motto?');
   c.max.mood('joy');
+  await focus(c.max, 1.45, 300);
   const m = H('div', 'motto', MOTTO.toUpperCase());
   overlay.append(m);
-  confetti(); sfx.chime(); sfx.boing();
+  confetti(); sfx.chime(); sfx.boing(); fireFlare();
   burst(300, 250); burst(980, 230, ['#2a6fdb', '#fff']);
-  await all(c.max.jump(80, 600), c.mom.jump(40, 600), c.dad.jump(40, 600), c.cat.spin(900),
-            say(c.max, MOTTO.toUpperCase(), { big: true, min: 2200 }));
+  await all(c.max.jump(90, 650), c.mom.jump(45, 600), c.dad.jump(45, 600), c.cat.spin(900), shake(500, 10),
+            say(c.max, MOTTO.toUpperCase(), { big: true, min: 2000 }));
   c.dad.mood('joy'); c.mom.mood('joy');
-  await all(c.max.hop(2), c.cat.hop(3, 30),
+  await all(wide(900), c.max.hop(2), c.cat.hop(3, 30),
             narrate('Do Your Best! Three little words that turn every day, even the tricky ones, into a chance to grow.'));
 }
 
 async function scenePaint() {
   chapter('Chapter Three', 'Adventure');
-  // Akela calls Max and family forward
-  const c = makeCast(); stand(c, FP_POS);
-  await wait(800);
+  const c = await castTo(FP_POS);
   await say(c.akela, 'Tonight, one of our Scouts has worked very hard. Will Max and his parents please come forward to take on the colors and spirit of Cub Scouting?');
   c.max.mood('joy');
-  await all(c.max.hop(2), c.mom.jump(25), c.dad.jump(25), wait(600));
-  resetStage();
-  // close-up of Max
+  await all(c.max.hop(2), c.mom.jump(28), c.dad.jump(28));
+  await irisTo(0, 800, ...faceSpot(c.max));           // iris closes on Max's face...
+  // ...and opens on the close-up
   closeL.style.display = '';
-  closeL.append(S('rect', { width: W, height: HGT, fill: 'url(#closeBg)' }));
-  const r = rng(7);
-  for (let i = 0; i < 30; i++) {
-    const st = S('circle', { cx: r() * W, cy: r() * HGT, r: 1 + r() * 2, fill: '#fff', class: 'star' });
-    st.style.animationDelay = (-r() * 3).toFixed(2) + 's';
-    closeL.append(st);
-  }
-  closeL.append(S('circle', { cx: 540, cy: 760, r: 330, fill: 'url(#fireGlow)', class: 'glow' }));
-  closeL.append(S('path', { d: 'M230,720 Q250,600 430,575 L650,575 Q830,600 850,720Z', fill: '#1f2d5c' }),
-                S('rect', { x: 505, y: 520, width: 70, height: 70, fill: '#f6c9a0' }),
-                S('g', { transform: 'translate(540,1072)' }, neckerchief(2.9)));
-  const head = makeHead({ skin: '#f6c9a0', hair: '#2e2019', hairTop: MAX_HAIR });
-  closeL.append(S('g', { transform: 'translate(540,350) scale(3.2)' }, head.g));
+  closeL.append(S('image', { href: BACKDROPS.cartoon, x: -60, y: -120, width: 1400, height: 933, preserveAspectRatio: 'xMidYMid slice', filter: 'url(#softBlur)' }),
+                S('rect', { width: W, height: HGT, fill: 'rgba(24,18,60,.35)' }),
+                S('circle', { cx: 540, cy: 780, r: 360, fill: 'url(#fireGlow)', class: 'glow' }));
+  const k = kerchiefShape(v => v * 3, { collarY: -182, sideX: 34, slideY: -150, tailY: -112, w: 11, color: '#d4e6f8', stripe: '#3b5da8', slide: '#b07d4a', ink: INK, inkW: 2 });
+  const bust = S('g');
+  bust.append(inked('rect', { x: 496, y: 500, width: 88, height: 110, fill: '#f7c9a3' }, 6),
+              shaded(inked('path', { d: 'M180,760 Q200,620 420,588 L660,588 Q880,620 900,760Z', fill: '#26357a' }, 6), 'M600,560 Q760,620 760,760 L960,760 L960,560Z', '#17225a'),
+              S('g', { transform: 'translate(540,1136)' }, [k.tails, k.bands, k.knot]));
+  const head = makeToonHead({ skin: '#f7c9a3', hair: '#3a2518', hairStyle: 'max', tuft: true, hairLight: '#6b4630' });
+  bust.append(S('g', { transform: 'translate(540,340) scale(3)' }, head.g));
+  closeL.append(bust);
+  TOONS.push({ tick: (dt, t) => faceTick(head, dt, t, 'Max') });
   const card = H('div', 'marks', '<h3>The Painted Bobcat</h3>');
   MARKS.forEach(mk => card.append(H('div', 'mk', `<span class="dot" style="background:${mk.color}">${mk.icon}</span><span><b>${mk.title}</b>${mk.sub}</span>`)));
   overlay.append(card);
   const items = card.querySelectorAll('.mk');
   const akela = { name: 'Akela', color: '#8a6a2e', voice: { pitch: .9, rate: .94 } };
   const max = { name: 'Max', color: '#2456b8', voice: { pitch: 1.55, rate: 1.08 } };
-  await narrate('As Akela says each color, Mom and Dad take turns with the brush.', { min: 1800 });
+  // a slow push-in on Max for the whole ceremony
+  tween(40000, p => bust.setAttribute('transform', `translate(540 420) scale(${1 + .08 * p}) translate(-540 -420)`), ease.lin).catch(() => {});
+  await all(irisTo(70, 800, 540, 340), narrate('As Akela says each color, Mom and Dad take turns with the brush.', { min: 1800 }));
   const brush = makeBrush(2.3);
   for (let i = 0; i < MARKS.length; i++) {
     const mk = MARKS[i];
     items.forEach(it => it.classList.remove('now'));
     items[i].classList.add('now');
     head.mood(i % 2 ? 'joy' : undefined);
-    await all(paintMark(head, mk.key, brush, 700), say(akela, mk.lines[0], { bubble: false, min: 1500 }));
+    await all(paintMark(head, mk.key, brush, 650), say(akela, mk.lines[0], { bubble: false, min: 1400 }));
     for (const line of mk.lines.slice(1)) await say(akela, line, { bubble: false });
     items[i].classList.remove('now'); items[i].classList.add('done');
     sfx.sparkle(); sparkleAt(540, 350);
   }
-  await brush.fly(1400, 150, 600);
+  await brush.fly(1400, 150, 500);
   head.mood('joy'); sfx.rawr();
   burst(540, 300, ['#2a6fdb', '#f4c400', '#fff', '#d8342c', '#2f9e44'], 25, 260, 7);
-  await say(max, 'RAWR!', { bubble: false, min: 1400 });
+  await all(shake(500, 14), say(max, 'RAWR!', { bubble: false, min: 1300 }));
   await say(max, 'I’m a real Bobcat!', { bubble: false });
+  await irisTo(0, 700, 540, 340);
 }
 
 const FP_POS = { dad: 300, mom: 455, max: 615, akela: 1100, cat: 880 };
 async function sceneFamilyPaint() {
-  const c = makeCast(); stand(c, FP_POS);
+  const c = await castTo(FP_POS);
   c.max.head.painted(ALL_MARKS);
   c.max.mood('joy');
+  await irisTo(70, 800, ...faceSpot(c.max));
   await say(c.akela, 'Mom and Dad, please hand the brush to Max. It’s your turn now!');
   c.max.mood();
   c.mom.mood('wow'); c.dad.mood('wow');
@@ -1496,47 +1716,54 @@ async function sceneFamilyPaint() {
   const brush = makeBrush(1);
   brush.tip('#ffffff');
   brush.set(c.max.x + 55, c.max.y - 95);
-  await c.max.arm('R', -140, 500);
-  await narrate('Max dips the brush in white paint and gives each parent a stripe down the nose.', { min: 1500 });
+  await all(c.max.arm('R', -140, 450), camera(...clampCam(455, 400, 1.35), 700),
+            narrate('Max dips the brush in white paint and gives each parent a stripe down the nose.', { min: 1500 }));
   c.mom.mood('joy');
-  await all(paintMark(c.mom.head, 'nose', brush, 600), wait(900));
+  await all(focus(c.mom, 1.8, 500), paintMark(c.mom.head, 'nose', brush, 600));
   sparkleAt(c.mom.x, c.mom.top() + 90); sfx.sparkle();
   await say(c.mom, 'Hee hee! That tickles!');
   c.dad.mood('joy');
-  await all(paintMark(c.dad.head, 'nose', brush, 600), wait(900));
+  await all(focus(c.dad, 1.8, 500), paintMark(c.dad.head, 'nose', brush, 600));
   sparkleAt(c.dad.x, c.dad.top() + 90); sfx.sparkle();
-  await brush.fly(c.max.x + 55, c.max.y - 250, 400);
+  await all(wide(800), brush.fly(c.max.x + 55, c.max.y - 250, 400));
   brush.g.remove();
-  await c.max.arm('R', -8, 400);
+  await c.max.arm('R', -10, 350);
   await say(c.akela, PARENT_WHITE);
   c.dad.mood();
-  await say(c.dad, 'How do I look? Fierce?');
+  await all(focus(c.dad, 1.6, 450), say(c.dad, 'How do I look? Fierce?'));
   c.max.mood('joy'); sfx.rawr();
-  await all(c.max.hop(2), say(c.max, 'You look AWESOME!'));
-  await say(c.akela, 'Congratulations, Max. You are officially a Bobcat of Pack 149!');
+  await all(focus(c.max, 1.6, 350), c.max.hop(2), say(c.max, 'You look AWESOME!'));
+  await all(wide(700), say(c.akela, 'Congratulations, Max. You are officially a Bobcat of Pack 149!'));
   c.max.badge.style.display = '';
-  sfx.chime(); sparkleAt(c.max.x - 25, c.max.y - 98);
-  await all(c.max.jump(60, 520), c.mom.hop(1, 30), c.dad.hop(1, 30), wait(900));
+  sfx.chime(); sparkleAt(c.max.x - 22, c.max.y - 124);
+  await all(c.max.jump(70, 560), c.mom.hop(1, 35), c.dad.hop(1, 35), wait(700));
 }
 
 const FIN_POS = { dad: 300, max: 455, mom: 610, akela: 1100, cat: 880 };
 async function sceneFinale() {
-  const c = makeCast(); stand(c, FIN_POS);
+  const c = await castTo(FIN_POS);
   c.max.head.painted(ALL_MARKS);
-  for (const k of ['max', 'mom', 'dad']) c[k].mood('joy');
   c.mom.head.painted(['nose']); c.dad.head.painted(['nose']);
   c.max.badge.style.display = '';
-  c.mom.setArm('L', 40); c.dad.setArm('R', -40);
+  for (const k of ['max', 'mom', 'dad']) c[k].mood('joy');
+  await all(c.mom.arm('L', 40, 500), c.dad.arm('R', -40, 500));
+  $('#bunting').style.display = 'none';
   const fin = H('div', 'finale', `<div class="fam">Family · Fun · Adventure</div><div class="welcome">Welcome to Pack 149, Bobcat Max!</div>`);
   overlay.append(fin);
   confetti(90); sfx.chime();
   burst(250, 200); burst(1050, 180, ['#2a6fdb', '#fff']);
   await narrate('Every new Scout’s first milestone. A proud moment for Scouts and families alike. And for Max and his family, a brand-new adventure has begun!');
   const b = [c.dad, c.max, c.mom, c.cat].map(a => showBubble(a.x, a.top() - 14, 'RAWR!', true));
-  sfx.rawr(); sfx.boom();
-  await all(c.max.jump(70, 550), c.mom.jump(45, 550), c.dad.jump(45, 550), c.cat.spin(700), c.akela.wave(1800),
+  sfx.rawr(); sfx.boom(); fireFlare();
+  await all(c.max.jump(80, 600), c.mom.jump(50, 600), c.dad.jump(50, 600), c.cat.spin(700), c.akela.wave(1800), shake(600, 12),
             say(null, 'RAWR! Welcome to Pack 149!', { min: 2000 }));
   b.forEach(x => x.remove());
+  // classic cartoon ending: the iris closes on Max... then opens again for the fireworks
+  fin.style.display = 'none';
+  await irisTo(9, 900, ...faceSpot(c.max));
+  await wait(1200);
+  fin.style.display = '';
+  await irisTo(70, 800, ...faceSpot(c.max));
   const rb = H('button', 'replay', '↻ Watch again');
   rb.onclick = () => start(0);
   overlay.append(rb, H('div', 'url', 'bsapack149.org'));
@@ -1545,7 +1772,7 @@ async function sceneFinale() {
     const x = 120 + Math.random() * 1040, y = 190 + Math.random() * 140;
     burst(x, y, i % 2 ? ['#f5b700', '#fff'] : ['#2a6fdb', '#ff7a9a', '#fff'], 20, 70 + Math.random() * 50, 4);
     sfx.boom();
-    if (i % 4 === 0) c[['max', 'mom', 'dad', 'cat'][i / 4 % 4]].jump(35);
+    if (i % 4 === 0) c[['max', 'mom', 'dad', 'cat'][i / 4 % 4]].jump(40);
     await wait(1100);
   }
 }
@@ -1563,8 +1790,15 @@ const SCENES = [
 ];
 
 // ---------- player ----------
+function softReset() {
+  fxL.innerHTML = ''; overlay.innerHTML = '';
+  closeL.style.display = 'none'; closeL.innerHTML = '';
+  TOONS.splice(0, TOONS.length, ...(CAST ? Object.values(CAST) : []));
+  $('#bunting').style.display = ''; setBush(0);
+}
 function resetStage() {
-  TOONS.length = 0; setCam(W / 2, HGT / 2, 1); $('#firelight').style.display = 'none';
+  CAST = null; irisR = 70; $('#iris').style.display = 'none'; $('#bunting').style.display = '';
+  TOONS.length = 0; setCam(W / 2, HGT / 2, 1); $('#firelight').style.display = ''; $('#bush').style.display = '';
   actorsL.innerHTML = ''; fxL.innerHTML = ''; overlay.innerHTML = '';
   closeL.style.display = 'none'; closeL.innerHTML = '';
   setBush(0);
@@ -1580,7 +1814,7 @@ async function start(i) {
   setPaused(false);
   for (let k = Math.max(0, i); k < SCENES.length; k++) {
     if (id !== RUN) return;
-    current = k; updateNav(); resetStage(); music.setMood(SCENES[k].mood);
+    current = k; updateNav(); k === i ? resetStage() : softReset(); music.setMood(SCENES[k].mood);
     try { await SCENES[k].run(); await wait(400); }
     catch (e) { if (e === CANCEL) return; console.error(e); }
   }
@@ -1627,8 +1861,9 @@ document.addEventListener('keydown', e => {
 });
 
 buildBackground();
+setBackdrop('cartoon');
 // idle preview behind the start screen
-(() => { const c = makeCast(); stand(c); c.max.mood('joy'); })();
+(() => { const c = makeCast(); for (const k in POS) c[k].at(POS[k]); c.max.mood('joy'); })();
 updateNav();
 if (params.has('scene')) { hideStart(); start(+params.get('scene')); }
 if (window.PILOT || location.hash === '#pilot') {
