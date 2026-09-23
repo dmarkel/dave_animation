@@ -243,6 +243,15 @@
   }
   .pilot-card button.alt { background: #2a3470; color: #fff; box-shadow: 0 .3cqw 0 #151b44; }
   .pilot-card button:focus-visible, #controls button:focus-visible { outline: .25cqw solid #fff; outline-offset: .2cqw; }
+  /* ?record: exactly 1280×720, captions as subtitles inside the picture, no controls */
+  body.record { display: block; background: #000; }
+  body.record #app { width: 1280px; padding: 0; gap: 0; }
+  body.record #stage { border-radius: 0; box-shadow: none; }
+  body.record #controls, body.record #rotate, body.record .replay { display: none; }
+  body.record #caption {
+    position: absolute; left: 50%; bottom: 2.4%; transform: translateX(-50%); width: 86%; z-index: 2;
+    min-height: 0; font-size: 1.85cqw; padding: .5cqw 1.2cqw; opacity: .94;
+  }
   body.pilot #chips, body.pilot #prev, body.pilot #next { display: none; }
   body.paused *, body.paused *::before, body.paused *::after { animation-play-state: paused !important; }
 
@@ -433,37 +442,81 @@ function pickVoice() {
 if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 // Recorded voices: voices.js sets window.VOICES, mapping "Speaker|caption text" to an audio clip.
 // Any line without a clip falls back to the browser's built-in voice.
-let clip = null;
+const CLIPS = new Set();   // every voice clip currently playing
 const clipFor = (name, text) => window.VOICES && window.VOICES[name + '|' + text];
+// ---------- recording: tools/export_video.js opens the page with ?record ----------
+// Every sound goes through one master node, which the recorder can also listen to.
+const RECORD = params.has('record');
+let master = null, recDest = null;
+function audioOut() {
+  if (!master) {
+    master = AC.createGain();
+    master.connect(AC.destination);
+    if (RECORD) { recDest = AC.createMediaStreamDestination(); master.connect(recDest); }
+  }
+  return master;
+}
+window.__rec = {
+  start() {                                // starts the story and the audio recording together
+    hideStart(); audioOut();
+    this.chunks = [];
+    this.mr = new MediaRecorder(recDest.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 192000 });
+    this.mr.ondataavailable = e => this.chunks.push(e.data);
+    this.mr.start(1000);
+    this.t0 = Date.now();
+    start(0);
+    return this.t0;
+  },
+  stop() {
+    return new Promise(res => {
+      this.mr.onstop = async () => {
+        const bytes = new Uint8Array(await new Blob(this.chunks).arrayBuffer());
+        let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        res(btoa(bin));
+      };
+      this.mr.stop();
+    });
+  },
+};
+
 // talking = who is speaking right now; cartoon characters move their mouths to it.
 let talking = null;
+// A clip that ends after the story was skipped or restarted rejects with CANCEL, so the
+// scene that started it stops too instead of carrying on with its next line.
 function playClip(src, name, text) {
-  return new Promise(res => {
+  const id = RUN;
+  return new Promise((res, rej) => {
     const a = new Audio(src);
-    clip = a;
+    CLIPS.add(a);
     const me = talking = { name, audio: a, lips: window.LIPS && window.LIPS[name + '|' + text] };
     a.playbackRate = Math.min(SPEED * VOICE_RATE, 3);
+    if (RECORD && AC) AC.createMediaElementSource(a).connect(audioOut());   // so the recorder hears the voices
     let done = false;
-    a.finish = () => { if (!done) { done = true; music.duck(false); if (clip === a) clip = null; if (talking === me) talking = null; res(); } };
+    a.finish = () => {
+      if (done) return;
+      done = true; music.duck(false); CLIPS.delete(a);
+      if (talking === me) talking = null;
+      id === RUN ? res() : rej(CANCEL);
+    };
     a.onended = a.onerror = a.finish;
     music.duck(true);
     a.play().catch(a.finish);
   });
 }
-function stopClip() { if (clip) { clip.pause(); clip.finish(); } }
+function stopClip() { for (const a of [...CLIPS]) { a.pause(); a.finish(); } }
 function speak(text, v = {}, name) {
   if (!soundOn) return Promise.resolve();
   const src = clipFor(name, text);
   if (src) return playClip(src, name, text);
   if (!window.speechSynthesis) return Promise.resolve();
-  return new Promise(res => {
+  return new Promise((res, rej) => {
     const clean = text.replace(/\p{Extended_Pictographic}|️/gu, '').replace(/Akela/g, 'Ah-kay-la');
     const u = new SpeechSynthesisUtterance(clean);
     if (voice) u.voice = voice;
     u.pitch = v.pitch ?? 1; u.rate = (v.rate ?? 1) * Math.min(SPEED, 2);
     let done = false;
-    const me = talking = { name };
-    const finish = () => { if (!done) { done = true; music.duck(false); if (talking === me) talking = null; res(); } };
+    const me = talking = { name }, id = RUN;
+    const finish = () => { if (!done) { done = true; music.duck(false); if (talking === me) talking = null; id === RUN ? res() : rej(CANCEL); } };
     u.onend = u.onerror = finish;
     music.duck(true);
     speechSynthesis.speak(u);
@@ -476,7 +529,7 @@ function tone(freq, dur = .15, type = 'sine', vol = .12, delay = 0, slide = 0) {
   o.type = type; o.frequency.setValueAtTime(freq, t);
   if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
-  o.connect(g).connect(AC.destination); o.start(t); o.stop(t + dur + .02);
+  o.connect(g).connect(audioOut()); o.start(t); o.stop(t + dur + .02);
 }
 const sfx = {
   pop: (p = 1) => tone(380 * p, .12, 'sine', .15, 0, 900 * p),
@@ -546,7 +599,7 @@ const music = (() => {
   return {
     start() {
       if (!AC || !on || timer) return;
-      if (!out) { out = AC.createGain(); out.gain.value = level(); out.connect(AC.destination); }
+      if (!out) { out = AC.createGain(); out.gain.value = level(); out.connect(audioOut()); }
       next = AC.currentTime + .1; timer = setInterval(tick, 30);
     },
     stop() { clearInterval(timer); timer = null; },
@@ -1226,6 +1279,23 @@ class ToonActor extends Actor {
       this.place();
     }, ease.lin).then(() => { this.sx = this.sy = 1; this.place(); });
   }
+  leap(x, ms = 950, h = 150) {
+    const x0 = this.x;
+    let landed = false;
+    return tween(ms, (p, raw) => {
+      if (raw < .18) { const q = Math.sin(raw / .18 * Math.PI / 2); this.sy = 1 - .16 * q; this.sx = 1 + .12 * q; this.bob = 0; }
+      else if (raw < .86) {
+        const q = (raw - .18) / .68, st = .14 * Math.abs(Math.cos(Math.PI * q));
+        this.x = x0 + (x - x0) * ease.io(q);
+        this.bob = -Math.sin(Math.PI * q) * h; this.sy = 1 + st; this.sx = 1 - st * .8;
+      } else {
+        if (!landed) { landed = true; this.x = x; dustPuff(this.x, this.y); }
+        const q = (raw - .86) / .14, k = Math.sin(Math.PI * q);
+        this.bob = 0; this.sy = 1 - .17 * k; this.sx = 1 + .15 * k;
+      }
+      this.place();
+    }, ease.lin).then(() => { this.x = x; this.sx = this.sy = 1; this.bob = 0; this.place(); });
+  }
   sign(on) {  // arm angled out so the hand clears the big cartoon head
     this.holding = on;
     this.fingers.style.display = on ? '' : 'none';
@@ -1488,11 +1558,22 @@ async function castTo(pos, { snap = false, keepCam = false } = {}) {
     if (!(k in pos)) continue;
     const far = a.x < -150 || a.x > W + 150 || pos[k] < -150 || pos[k] > W + 150;
     if (fresh || snap || far || Math.abs(a.x - pos[k]) < 2) a.at(pos[k]);
+    else if (crossesFire(a.x, pos[k]) && a.leap) moves.push(hopOverFire(a, pos[k]));
     else moves.push(a.walk(pos[k], Math.min(1300, 350 + Math.abs(a.x - pos[k]) * 2)));
   }
   if (!keepCam && (cam.z !== 1 || cam.x !== W / 2 || cam.y !== HGT / 2)) moves.push(wide(800));
   await all(...moves);
   return c;
+}
+const FIRE_CLEAR = 95;   // half-width of the campfire plus a little room
+const crossesFire = (x0, x1) => Math.min(x0, x1) < FIRE_X + FIRE_CLEAR && Math.max(x0, x1) > FIRE_X - FIRE_CLEAR;
+// walk up to the fire, leap over it, walk on to x
+async function hopOverFire(a, x) {
+  const dir = Math.sign(x - a.x), before = FIRE_X - dir * FIRE_CLEAR, after = FIRE_X + dir * FIRE_CLEAR;
+  if (Math.abs(a.x - before) > 5 && Math.sign(before - a.x) === dir) await a.walk(before, 250 + Math.abs(a.x - before) * 1.6);
+  sfx.boing();
+  await a.leap(after, 850, 140);
+  if (Math.abs(x - after) > 5) await a.walk(x, 250 + Math.abs(x - after) * 1.6);
 }
 function clampCam(x, y, z) {
   const hw = W / 2 / z, hh = HGT / 2 / z;
@@ -1535,12 +1616,12 @@ async function sceneWelcome() {
   const t = H('div', 'titlecard', `<div class="k">Cub Scout Pack 149 presents</div><h1>The Painted Bobcat</h1>
     <div class="t">A tale of <b>Family</b>, <b>Fun</b> &amp; <b>Adventure</b></div>`);
   overlay.append(t);
-  await all(camera(W / 2, HGT / 2, 1, 3200), c.cat.walk(640, 3800),
+  await all(camera(W / 2, HGT / 2, 1, 3200), c.cat.walk(540, 3600),
             narrate('Once upon a starry night, deep in the woods where Pack 149 gathers around the campfire, it was time for a Bobcat ceremony...'));
   sfx.rawr(); fireFlare();
   await all(c.cat.jump(50), say(c.cat, 'Rawr! That’s Bobcat for “hello!”'));
   t.classList.add('out');
-  await all(c.cat.walk(1400, 2000), wait(700));
+  await all(hopOverFire(c.cat, 1400), wait(700));
 }
 
 async function sceneFamily() {
@@ -1590,7 +1671,7 @@ async function sceneBobcat() {
   await all(c.max.hop(2), say(c.max, 'I’ve been practicing all month!'));
 }
 
-const OATH_POS = { dad: 110, mom: 255, max: 405, akela: 570, cat: 690 };
+const OATH_POS = { dad: 110, mom: 255, max: 405, akela: 580, cat: 492 };
 async function sceneOath() {
   const c = await castTo(OATH_POS);
   await say(c.akela, 'Max, please give the Cub Scout sign and say the Scout Oath.');
@@ -1823,7 +1904,7 @@ function setPaused(p) {
   paused = p;
   document.body.classList.toggle('paused', p);
   if (window.speechSynthesis) p ? speechSynthesis.pause() : speechSynthesis.resume();
-  if (clip) p ? clip.pause() : clip.play().catch(() => {});
+  CLIPS.forEach(a => p ? a.pause() : a.play().catch(() => {}));
   if (AC) p ? AC.suspend() : AC.resume();
   updateNav();
 }
@@ -1866,6 +1947,7 @@ setBackdrop('cartoon');
 (() => { const c = makeCast(); for (const k in POS) c[k].at(POS[k]); c.max.mood('joy'); })();
 updateNav();
 if (params.has('scene')) { hideStart(); start(+params.get('scene')); }
+if (RECORD) { document.body.classList.add('record'); $('#stage').append($('#caption')); }
 if (window.PILOT || location.hash === '#pilot') {
   document.body.classList.add('pilot');
   document.title = 'Cartoon Style Preview';

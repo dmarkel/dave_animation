@@ -1,0 +1,13 @@
+{
+  "name": "painted-bobcat-tools",
+  "private": true,
+  "description": "Voice lip-sync measurement and MP4 export for The Painted Bobcat",
+  "scripts": {
+    "lips": "node make_lips.js",
+    "video": "node export_video.js"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "playwright": "1.56.1"
+  }
+}

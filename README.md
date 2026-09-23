@@ -46,3 +46,19 @@ matching the text in `index.html` exactly), then run `OPENAI_API_KEY=sk-... pyth
 Only new or changed lines are generated (a few cents at most). "149" is read aloud as "one forty-nine".
 
 **Single-file page for sharing:** `python3 tools/build_page.py out.html` embeds all the clips into one file.
+
+## Video (MP4)
+`tools/export_video.js` records the whole story to `out/painted-bobcat.mp4` (1280×720, 30 fps, H.264 +
+AAC, captions shown as subtitles). It plays `index.html?record` in headless Chromium in real time, so it
+takes about as long as the story (~5 minutes):
+
+```
+cd tools
+npm install                    # Playwright + ffmpeg
+npx playwright install chromium
+node export_video.js           # or: node export_video.js ~/Desktop/painted-bobcat.mp4
+```
+
+## Cartoon preview and backgrounds
+`index.html#pilot` plays a short before/after test of the cartoon style. `assets/bg-*.jpg` are the
+painted backdrops (OpenAI image model); the story uses `bg-cartoon.jpg`.
