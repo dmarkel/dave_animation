@@ -14,6 +14,10 @@
     --cream: #fff6df;
     --ink: #1b2250;
     --page: #0e1330;
+    color-scheme: dark;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .star, .firefly, .spark, .glow { animation: none !important; }
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -267,7 +271,7 @@
       <div class="kicker">Cub Scout Pack 149 presents</div>
       <h1>The Painted Bobcat</h1>
       <button id="begin">▶ Begin the Ceremony</button>
-      <small>Turn your sound on to hear the story read aloud 🔊</small>
+      <small>Turn your sound up for music and narration 🎵</small>
     </div>
   </div>
   <div id="caption"><span class="who" style="background:#6b4f9e">Pack 149</span><span class="txt">A story of Family, Fun &amp; Adventure.</span></div>
@@ -276,7 +280,8 @@
     <button id="play" title="Pause / play">⏸</button>
     <button id="next" title="Next scene">⏭</button>
     <div id="chips"></div>
-    <button id="snd" class="on" title="Narration and sound effects">🔊 Sound</button>
+    <button id="snd" class="on" title="Narration and sound effects">🔊 Voices</button>
+    <button id="mus" class="on" title="Background music">🎵 Music</button>
   </div>
   <div id="rotate">Tip: turn your phone sideways for a bigger show!</div>
 </div>
@@ -401,9 +406,12 @@ function speak(text, v = {}) {
     const u = new SpeechSynthesisUtterance(clean);
     if (voice) u.voice = voice;
     u.pitch = v.pitch ?? 1; u.rate = (v.rate ?? 1) * Math.min(SPEED, 2);
-    u.onend = u.onerror = () => res();
+    let done = false;
+    const finish = () => { if (!done) { done = true; music.duck(false); res(); } };
+    u.onend = u.onerror = finish;
+    music.duck(true);
     speechSynthesis.speak(u);
-    setTimeout(res, (3000 + clean.length * 110) / SPEED); // safety net
+    setTimeout(finish, (3000 + clean.length * 110) / SPEED); // safety net
   });
 }
 function tone(freq, dur = .15, type = 'sine', vol = .12, delay = 0, slide = 0) {
@@ -423,6 +431,77 @@ const sfx = {
   swish: () => tone(900, .18, 'triangle', .04, 0, 1800),
   boom: () => { tone(90, .5, 'sine', .15, 0, 40); tone(1400, .25, 'triangle', .03, .05, 600); },
 };
+
+// ---------- background music: an original campfire tune, made live with Web Audio ----------
+// Moods: 'calm' (ukulele-style strum + whistled melody), 'soft' (gentle pad under the
+// Oath, Law and face paint), 'party' (adds a little drum beat).
+const music = (() => {
+  let on = true, out = null, timer = null, step = 0, next = 0, mood = 'calm', ducks = 0, noiseBuf = null;
+  const E = 60 / 104 / 2; // one eighth note at 104 bpm
+  const CHORDS = [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62],
+                  [60, 64, 67], [53, 57, 60], [55, 59, 62], [60, 64, 67]]; // C Am F G | C F G C
+  const _ = 0, MELODY = [
+    67, _, 64, 67, 72, _, 67, _,   69, _, 67, 64, 60, _, _, _,
+    65, _, 69, 72, 74, 72, 69, _,  67, _, _, 71, 74, _, 71, _,
+    72, _, 67, 64, 67, _, 72, _,   69, _, 72, 69, 65, _, 69, _,
+    67, 71, 74, 71, 67, _, 62, _,  60, _, 64, _, 60, _, _, _];
+  const hz = m => 440 * Math.pow(2, (m - 69) / 12);
+  function note(m, t, dur, type, vol, attack = .005) {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.value = hz(m);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + attack);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(out); o.start(t); o.stop(t + dur + .05);
+  }
+  function shaker(t, vol) {
+    if (!noiseBuf) {
+      noiseBuf = AC.createBuffer(1, AC.sampleRate * .1, AC.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = AC.createBufferSource(), hp = AC.createBiquadFilter(), g = AC.createGain();
+    src.buffer = noiseBuf; hp.type = 'highpass'; hp.frequency.value = 6000;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + .06);
+    src.connect(hp).connect(g).connect(out); src.start(t); src.stop(t + .08);
+  }
+  function kick(t) {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(45, t + .14);
+    g.gain.setValueAtTime(.35, t); g.gain.exponentialRampToValueAtTime(.0001, t + .2);
+    o.connect(g).connect(out); o.start(t); o.stop(t + .22);
+  }
+  function play(i, t) {
+    const bar = Math.floor(i / 8) % 8, s = i % 8, ch = CHORDS[bar];
+    if (s === 0 || s === 4) note(ch[0] - 24, t, E * 3.6, 'triangle', .22);            // bass
+    if (mood === 'soft') {
+      if (s === 0) ch.forEach(m => note(m, t, E * 8.5, 'sine', .04, .5));            // warm pad
+      if (s % 2 === 0) note(ch[(s / 2) % 3] + 12, t, E * 3, 'sine', .03);           // music-box twinkle
+      return;
+    }
+    note(ch[[0, 1, 2, 1, 0, 1, 2, 1][s]], t, E * 1.7, 'triangle', .055);             // ukulele-ish strum
+    const m = MELODY[bar * 8 + s];
+    if (m) note(m + 12, t, E * 1.9, 'sine', .06, .02);                                // whistled melody
+    if (mood === 'party') { if (s % 4 === 0) kick(t); if (s % 2 === 1) shaker(t, .06); }
+    else if (s % 2 === 1) shaker(t, .018);
+  }
+  function tick() { while (next < AC.currentTime + .15) { play(step++, next); next += E; } }
+  const level = () => (ducks > 0 ? .2 : .45);
+  return {
+    start() {
+      if (!AC || !on || timer) return;
+      if (!out) { out = AC.createGain(); out.gain.value = level(); out.connect(AC.destination); }
+      next = AC.currentTime + .1; timer = setInterval(tick, 30);
+    },
+    stop() { clearInterval(timer); timer = null; },
+    setMood(m) { mood = m || 'calm'; },
+    duck(d) {
+      ducks = Math.max(0, ducks + (d ? 1 : -1));
+      if (out) out.gain.setTargetAtTime(level(), AC.currentTime, .15);
+    },
+    toggle(v) { on = v; v ? this.start() : this.stop(); },
+  };
+})();
 
 // ---------- caption + bubbles ----------
 function setCaption(name, text, color) {
@@ -1101,15 +1180,15 @@ async function sceneFinale() {
 }
 
 const SCENES = [
-  { name: 'Welcome', run: sceneWelcome },
-  { name: 'Family', run: sceneFamily },
-  { name: 'Bobcat', run: sceneBobcat },
-  { name: 'Oath', run: sceneOath },
-  { name: 'Law', run: sceneLaw },
-  { name: 'Motto', run: sceneMotto },
-  { name: 'Face Paint', run: scenePaint },
-  { name: 'Parents', run: sceneFamilyPaint },
-  { name: 'Finale', run: sceneFinale },
+  { name: 'Welcome', mood: 'calm', run: sceneWelcome },
+  { name: 'Family', mood: 'calm', run: sceneFamily },
+  { name: 'Bobcat', mood: 'calm', run: sceneBobcat },
+  { name: 'Oath', mood: 'soft', run: sceneOath },
+  { name: 'Law', mood: 'soft', run: sceneLaw },
+  { name: 'Motto', mood: 'party', run: sceneMotto },
+  { name: 'Face Paint', mood: 'soft', run: scenePaint },
+  { name: 'Parents', mood: 'calm', run: sceneFamilyPaint },
+  { name: 'Finale', mood: 'party', run: sceneFinale },
 ];
 
 // ---------- player ----------
@@ -1128,7 +1207,7 @@ async function start(i) {
   setPaused(false);
   for (let k = Math.max(0, i); k < SCENES.length; k++) {
     if (id !== RUN) return;
-    current = k; updateNav(); resetStage();
+    current = k; updateNav(); resetStage(); music.setMood(SCENES[k].mood);
     try { await SCENES[k].run(); await wait(600); }
     catch (e) { if (e === CANCEL) return; console.error(e); }
   }
@@ -1137,6 +1216,7 @@ function setPaused(p) {
   paused = p;
   document.body.classList.toggle('paused', p);
   if (window.speechSynthesis) p ? speechSynthesis.pause() : speechSynthesis.resume();
+  if (AC) p ? AC.suspend() : AC.resume();
   updateNav();
 }
 SCENES.forEach((s, i) => {
@@ -1146,6 +1226,8 @@ SCENES.forEach((s, i) => {
 });
 function hideStart() {
   if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (AC && AC.state === 'suspended') AC.resume();
+  music.start();
   $('#start').style.display = 'none';
 }
 $('#begin').onclick = () => { hideStart(); start(0); };
@@ -1155,8 +1237,14 @@ $('#play').onclick = () => { if ($('#start').style.display !== 'none') { hideSta
 $('#snd').onclick = () => {
   soundOn = !soundOn;
   $('#snd').classList.toggle('on', soundOn);
-  $('#snd').textContent = soundOn ? '🔊 Sound' : '🔇 Muted';
+  $('#snd').textContent = soundOn ? '🔊 Voices' : '🔇 Voices';
   if (!soundOn && window.speechSynthesis) speechSynthesis.cancel();
+};
+$('#mus').onclick = () => {
+  const v = !$('#mus').classList.contains('on');
+  $('#mus').classList.toggle('on', v);
+  $('#mus').textContent = v ? '🎵 Music' : '🔇 Music';
+  music.toggle(v);
 };
 document.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); $('#play').click(); }

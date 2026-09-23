@@ -4,7 +4,7 @@ A whimsical, narrated JavaScript + SVG animation of a Cub Scout's Bobcat ceremon
 Family, Fun & Adventure.
 
 **To watch:** open `index.html` in any modern browser (no install or server needed).
-Turn the sound on to hear it read aloud (uses the browser's built-in voice).
+Turn the sound up: an original campfire tune plays in the background (🎵 toggles it) and the browser reads the story aloud (🔊 toggles voices).
 
 ## The story
 1. **Welcome** – a campfire night at Pack 149, and a friendly bobcat says hello.
