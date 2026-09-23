@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build a single self-contained page (voices embedded) for publishing.
 
-Usage: python3 tools/build_page.py OUTPUT.html
+Usage: python3 tools/build_page.py OUTPUT.html [--pilot]
+(--pilot builds the cartoon-style preview instead of the full story.)
 The output has no <html>/<head>/<body> wrapper, as the Artifact host adds its own.
 """
 import base64, json, os, re, sys
@@ -14,6 +15,10 @@ embedded = {k: "data:audio/mpeg;base64," + base64.b64encode(open(os.path.join(RO
             for k, v in mapping.items()}
 html = html.replace('<script src="voices.js"></script>',
                     "<script>window.VOICES = " + json.dumps(embedded, ensure_ascii=False) + ";</script>")
+lips = open(os.path.join(ROOT, "voices-lips.js"), encoding="utf-8").read()
+html = html.replace('<script src="voices-lips.js"></script>', "<script>" + lips + "</script>")
+if "--pilot" in sys.argv:
+    html = html.replace("<title>The Painted Bobcat</title>", "<title>Cartoon Style Preview</title><script>window.PILOT = true;</script>")
 for tag in (r"<!DOCTYPE html>\n", r'<html lang="en">\n', r"<head>\n", r"</head>\n", r"<body>\n", r"</body>\n", r"</html>\n?", r"<meta [^>]*>\n"):
     html = re.sub(tag, "", html)
 open(sys.argv[1], "w", encoding="utf-8").write(html)

@@ -224,6 +224,22 @@
   .tail { transform-box: fill-box; transform-origin: 0% 50%; animation: wag .45s infinite alternate ease-in-out; }
   @keyframes wag { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
 
+  #firelight { mix-blend-mode: soft-light; pointer-events: none; animation: glow 1.1s infinite alternate ease-in-out; }
+  .pilot-card {
+    position: absolute; left: 50%; top: 4%; transform: translateX(-50%); pointer-events: auto;
+    background: var(--cream); color: var(--ink); border: .35cqw solid var(--gold); border-radius: 1.6cqw;
+    padding: 1.6cqw 2.4cqw; text-align: center; box-shadow: 0 1cqw 3cqw rgba(0,0,0,.5); animation: fadeIn .6s ease-out;
+  }
+  .pilot-card h2 { margin: 0 0 .3em; font-size: 3cqw; color: var(--blue); line-height: 1.1; }
+  .pilot-card p { margin: 0 0 1cqw; font-size: 1.7cqw; }
+  .pilot-card .row { display: flex; gap: 1cqw; justify-content: center; flex-wrap: wrap; }
+  .pilot-card button {
+    font: inherit; font-weight: 800; font-size: 1.9cqw; border: 0; border-radius: 99px; cursor: pointer;
+    padding: .35em 1em; background: var(--gold); color: var(--ink); box-shadow: 0 .3cqw 0 #b88600;
+  }
+  .pilot-card button.alt { background: #2a3470; color: #fff; box-shadow: 0 .3cqw 0 #151b44; }
+  .pilot-card button:focus-visible, #controls button:focus-visible { outline: .25cqw solid #fff; outline-offset: .2cqw; }
+  body.pilot #chips, body.pilot #prev, body.pilot #next { display: none; }
   body.paused *, body.paused *::before, body.paused *::after { animation-play-state: paused !important; }
 
   #rotate { display: none; }
@@ -252,6 +268,11 @@
           <stop offset=".45" stop-color="#ff8a3a" stop-opacity=".35"/>
           <stop offset="1" stop-color="#ff6a2a" stop-opacity="0"/>
         </radialGradient>
+        <radialGradient id="firelightGrad" gradientUnits="userSpaceOnUse" cx="735" cy="620" r="520">
+          <stop offset="0" stop-color="#ffb347" stop-opacity=".55"/>
+          <stop offset=".5" stop-color="#ff8a3a" stop-opacity=".18"/>
+          <stop offset="1" stop-color="#ff8a3a" stop-opacity="0"/>
+        </radialGradient>
         <radialGradient id="closeBg" cx=".42" cy=".55" r=".75">
           <stop offset="0" stop-color="#7a4a3a"/>
           <stop offset=".5" stop-color="#3b2750"/>
@@ -263,6 +284,7 @@
         <g id="actors"></g>
         <g id="front"></g>
         <g id="close" style="display:none"></g>
+        <rect id="firelight" x="-400" y="-300" width="2080" height="1320" fill="url(#firelightGrad)" style="display:none"/>
         <g id="fx"></g>
       </g>
     </svg>
@@ -287,6 +309,7 @@
 </div>
 
 <script src="voices.js"></script>
+<script src="voices-lips.js"></script>
 <script>
 /* =====================================================================
    THE PAINTED BOBCAT — a Pack 149 story
@@ -404,13 +427,16 @@ if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pic
 // Any line without a clip falls back to the browser's built-in voice.
 let clip = null;
 const clipFor = (name, text) => window.VOICES && window.VOICES[name + '|' + text];
-function playClip(src) {
+// talking = who is speaking right now; cartoon characters move their mouths to it.
+let talking = null;
+function playClip(src, name, text) {
   return new Promise(res => {
     const a = new Audio(src);
     clip = a;
+    const me = talking = { name, audio: a, lips: window.LIPS && window.LIPS[name + '|' + text] };
     a.playbackRate = Math.min(SPEED, 2);
     let done = false;
-    a.finish = () => { if (!done) { done = true; music.duck(false); if (clip === a) clip = null; res(); } };
+    a.finish = () => { if (!done) { done = true; music.duck(false); if (clip === a) clip = null; if (talking === me) talking = null; res(); } };
     a.onended = a.onerror = a.finish;
     music.duck(true);
     a.play().catch(a.finish);
@@ -420,7 +446,7 @@ function stopClip() { if (clip) { clip.pause(); clip.finish(); } }
 function speak(text, v = {}, name) {
   if (!soundOn) return Promise.resolve();
   const src = clipFor(name, text);
-  if (src) return playClip(src);
+  if (src) return playClip(src, name, text);
   if (!window.speechSynthesis) return Promise.resolve();
   return new Promise(res => {
     const clean = text.replace(/\p{Extended_Pictographic}|️/gu, '').replace(/Akela/g, 'Ah-kay-la');
@@ -428,7 +454,8 @@ function speak(text, v = {}, name) {
     if (voice) u.voice = voice;
     u.pitch = v.pitch ?? 1; u.rate = (v.rate ?? 1) * Math.min(SPEED, 2);
     let done = false;
-    const finish = () => { if (!done) { done = true; music.duck(false); res(); } };
+    const me = talking = { name };
+    const finish = () => { if (!done) { done = true; music.duck(false); if (talking === me) talking = null; res(); } };
     u.onend = u.onerror = finish;
     music.duck(true);
     speechSynthesis.speak(u);
@@ -530,6 +557,7 @@ function setCaption(name, text, color) {
   $('#caption .txt').textContent = text;
 }
 function showBubble(x, y, text, big) {
+  x = (x - cam.x) * cam.z + W / 2; y = (y - cam.y) * cam.z + HGT / 2;
   const b = H('div', 'bubble' + (big ? ' big' : ''));
   b.textContent = text;
   const cx = Math.max(150, Math.min(W - 150, x));
@@ -972,6 +1000,297 @@ function confetti(n = 70) {
   }
 }
 
+// ---------- cartoon style (preview): outlines, shading, squash & stretch, lip sync ----------
+const INK = '#2b2140';
+let cam = { x: W / 2, y: HGT / 2, z: 1 };
+function setCam(x, y, z) {
+  cam = { x, y, z };
+  $('#world').setAttribute('transform', `translate(${W / 2} ${HGT / 2}) scale(${z}) translate(${-x} ${-y})`);
+}
+function camera(x, y, z, ms = 900) {
+  const c0 = { ...cam };
+  return tween(ms, p => setCam(c0.x + (x - c0.x) * p, c0.y + (y - c0.y) * p, c0.z + (z - c0.z) * p));
+}
+const inked = (tag, attrs, w = 4.5) => S(tag, { stroke: INK, 'stroke-width': w, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', ...attrs });
+let clipIds = 0;
+function shaded(shape, shadowD, color, opacity = .55) {
+  // a shape with a soft cel-shadow clipped inside it
+  const id = 'tc' + (++clipIds);
+  const cp = S('clipPath', { id }, shape.cloneNode());
+  cp.firstChild.removeAttribute('stroke');
+  $('#scene defs').append(cp);
+  const g = S('g', {}, [shape.cloneNode(), S('path', { d: shadowD, fill: color, opacity, 'clip-path': `url(#${id})` })]);
+  g.firstChild.setAttribute('stroke', 'none');
+  g.append(shape); shape.setAttribute('fill', 'none');
+  return g;
+}
+const TOONS = [];
+(function toonLoop(last) {
+  requestAnimationFrame(now => {
+    const dt = Math.min(.05, (now - (last || now)) / 1000);
+    if (!paused) TOONS.forEach(t => t.tick(dt * SPEED, now / 1000));
+    toonLoop(now);
+  });
+})();
+
+class ToonActor extends Actor {
+  place() {
+    this.g.setAttribute('transform', `translate(${this.x.toFixed(1)},${(this.y + this.bob).toFixed(1)}) scale(${this.s}) rotate(${this.rot} 0 ${this.cy})`);
+    this.squash.setAttribute('transform', `scale(${this.sx.toFixed(3)},${this.sy.toFixed(3)})`);
+  }
+  setLegs(a) {
+    this.legL.setAttribute('transform', `rotate(${a} -13 -96)`);
+    this.legR.setAttribute('transform', `rotate(${-a} 13 -96)`);
+  }
+  walk(x, ms = 2600) {
+    const x0 = this.x, sL = this.arms.L.a, sR = this.arms.R.a;
+    return tween(ms, (p, raw) => {
+      const ph = raw * ms / 150, fade = Math.min(1, raw * 8, (1 - raw) * 8);
+      this.x = x0 + (x - x0) * p;
+      this.bob = -Math.abs(Math.sin(ph)) * 7 * fade;
+      this.setLegs(Math.sin(ph) * 26 * fade);
+      if (!this.holding) { this.setArm('L', sL + Math.sin(ph) * 20 * fade); this.setArm('R', sR + Math.sin(ph) * 20 * fade); }
+      this.place();
+    }, ease.io).then(() => { this.bob = 0; this.setLegs(0); this.place(); });
+  }
+  jump(h = 60, ms = 650) {
+    let landed = false, launched = false;
+    return tween(ms, (p, raw) => {
+      if (raw < .22) {                                   // anticipation: crouch
+        const q = Math.sin(raw / .22 * Math.PI / 2);
+        this.sy = 1 - .15 * q; this.sx = 1 + .12 * q; this.bob = 0;
+      } else if (raw < .84) {                            // airborne: stretch at take-off and landing
+        if (!launched) { launched = true; this.fx && speedLines(this.x, this.y - 20 * this.s); }
+        const q = (raw - .22) / .62, st = .13 * Math.abs(Math.cos(Math.PI * q));
+        this.bob = -Math.sin(Math.PI * q) * h; this.sy = 1 + st; this.sx = 1 - st * .8;
+        this.setLegs(Math.sin(Math.PI * q) * -8);
+      } else {                                           // landing squash + wobble back
+        if (!landed) { landed = true; this.fx && dustPuff(this.x, this.y); }
+        const q = (raw - .84) / .16, k = Math.sin(Math.PI * q) * (1 - q * .3);
+        this.bob = 0; this.sy = 1 - .17 * k; this.sx = 1 + .15 * k; this.setLegs(0);
+      }
+      this.place();
+    }, ease.lin).then(() => { this.sx = this.sy = 1; this.place(); });
+  }
+  sign(on) {  // arm angled out so the hand clears the big cartoon head
+    this.holding = on;
+    this.fingers.style.display = on ? '' : 'none';
+    return this.arm('L', on ? 142 : this.restL, 650);
+  }
+  mood(m) { this.moodName = m; }
+  tick(dt, t) {
+    // breathing
+    this.torso.setAttribute('transform', `translate(0 -96) scale(1 ${1 + .014 * Math.sin(t * 2.4)}) translate(0 96)`);
+    // blinking
+    this.blinkT -= dt;
+    if (this.blinkT < -.14) this.blinkT = 2 + Math.random() * 3;
+    const lid = this.blinkT < 0 ? .12 : 1;
+    const joy = this.moodName === 'joy';
+    this.eyes.forEach(e => e.g.setAttribute('transform', `translate(${e.x} ${e.y}) scale(1 ${lid})`));
+    this.eyeOpen.style.display = joy ? 'none' : '';
+    this.eyeJoy.style.display = joy ? '' : 'none';
+    // eyebrows
+    const browY = this.moodName === 'wow' ? -7 : joy ? -3 : 0;
+    this.brows.setAttribute('transform', `translate(0 ${browY})`);
+    // mouth: follow the voice clip's loudness, or flap for the browser voice
+    let open = 0;
+    if (talking && talking.name === this.name) {
+      if (talking.lips && talking.audio) open = (+talking.lips[Math.floor(talking.audio.currentTime * 30)] || 0) / 9;
+      else if (!talking.audio) open = .35 + .35 * Math.sin(t * 18);
+      this.mouthLevel += (open - this.mouthLevel) * Math.min(1, dt * 22);
+    } else {
+      this.mouthLevel += ((joy ? .45 : this.moodName === 'wow' ? .3 : 0) - this.mouthLevel) * Math.min(1, dt * 10);
+    }
+    this.setMouth(this.mouthLevel);
+    // head tilt while talking
+    const tilt = (talking && talking.name === this.name) ? Math.sin(t * 3) * 3 : Math.sin(t * .8) * 1.2;
+    this.headG.setAttribute('transform', `rotate(${tilt} 0 -196)`);
+    // follow-through: hair tuft and neckerchief lag behind the body's motion
+    const vy = (this.bob - (this.lastBob ?? this.bob)) / Math.max(dt, .001);
+    this.lastBob = this.bob;
+    this.spring.v += ((-vy * .06) - this.spring.a) * 90 * dt;
+    this.spring.v *= Math.pow(.02, dt);
+    this.spring.a = Math.max(-35, Math.min(35, this.spring.a + this.spring.v * dt));
+    this.tuft.setAttribute('transform', `rotate(${this.spring.a} 8 -74)`);
+    this.kerchief.setAttribute('transform', `rotate(${this.spring.a * .5} 0 -168)`);
+  }
+}
+
+function makeToonCub(name = 'Max') {
+  const skin = '#f7c9a3', skinShade = '#e3a07c', shirt = '#26357a', shirtShade = '#17225a',
+        pants = '#1c2750', hair = '#3a2518';
+  const g = S('g'), squash = S('g');
+  g.append(S('ellipse', { cx: 0, cy: 2, rx: 44, ry: 8, fill: 'rgba(0,0,0,.25)' }), squash);
+  const leg = sd => {
+    const lg = S('g');
+    lg.append(inked('rect', { x: sd < 0 ? -26 : 3, y: -104, width: 23, height: 84, rx: 10, fill: pants }),
+              inked('path', { d: sd < 0 ? 'M-31,-22 Q-31,-34 -19,-34 L-7,-34 Q2,-34 4,-22 L4,-12 L-33,-12Z'
+                                        : 'M31,-22 Q31,-34 19,-34 L7,-34 Q-2,-34 -4,-22 L-4,-12 L33,-12Z', fill: '#2d3f8f' }),
+              inked('rect', { x: sd < 0 ? -35 : -5, y: -14, width: 40, height: 10, rx: 5, fill: '#fff' }, 3.5),
+              S('path', { d: sd < 0 ? 'M-22,-30 L-12,-30 M-21,-25 L-11,-25' : 'M22,-30 L12,-30 M21,-25 L11,-25', stroke: '#fff', 'stroke-width': 2.2, 'stroke-linecap': 'round' }));
+    return lg;
+  };
+  const legL = leg(-1), legR = leg(1);
+  // two fingers together, turned so they point straight up when the arm is raised (142°)
+  const fingers = S('g', { style: 'display:none', transform: 'rotate(38 -47 -100)' }, [-1, 0].map(i =>
+    inked('rect', { x: -47 + i * 8, y: -104, width: 8, height: 32, rx: 4, fill: skin }, 3)));
+  const arm = sd => {
+    const ag = S('g');
+    if (sd < 0) ag.append(fingers);
+    ag.append(inked('rect', { x: sd * 47 - 8, y: -150, width: 16, height: 48, rx: 8, fill: skin }),
+              inked('circle', { cx: sd * 47, cy: -100, r: 11, fill: skin }),
+              shaded(inked('path', { d: `M${sd * 36},-182 Q${sd * 58},-176 ${sd * 60},-146 L${sd * 36},-142Z`, fill: shirt }),
+                     `M${sd * 30},-160 L${sd * 70},-160 L${sd * 70},-130 L${sd * 30},-130Z`, shirtShade));
+    return ag;
+  };
+  const armL = arm(-1), armR = arm(1);
+  // torso
+  const torso = S('g');
+  const shirtShape = inked('path', { d: 'M-40,-182 Q-48,-124 -40,-94 L40,-94 Q48,-124 40,-182 Q0,-194 -40,-182Z', fill: shirt });
+  torso.append(shaded(shirtShape, 'M12,-200 Q34,-150 24,-90 L70,-90 L70,-200Z', shirtShade));
+  [-1, 1].forEach(sd => torso.append(
+    inked('rect', { x: sd < 0 ? -32 : 12, y: -150, width: 20, height: 22, rx: 4, fill: shirt }, 3),
+    inked('path', { d: `M${sd < 0 ? -33 : 11},-150 L${sd < 0 ? -11 : 33},-150 L${sd < 0 ? -11 : 33},-142 Q${sd * 22},-138 ${sd < 0 ? -33 : 11},-142Z`, fill: shirtShade }, 3),
+    S('circle', { cx: sd * 22, cy: -142, r: 2.2, fill: '#c9b27a' })));
+  torso.append(inked('circle', { cx: 22, cy: -121, r: 7, fill: '#fff' }, 2.5), S('path', { d: 'M22,-126 Q19,-121 22,-116 Q25,-121 22,-126Z', fill: '#6a4fb0' }));
+  torso.append(inked('rect', { x: -41, y: -104, width: 82, height: 12, rx: 3, fill: '#141c3c' }, 3.5),
+               inked('rect', { x: -8, y: -106, width: 16, height: 15, rx: 3, fill: '#f5b700' }, 3));
+  const kerchief = S('g', {}, [
+    inked('path', { d: 'M-34,-184 L34,-184 L6,-132 Q0,-126 -6,-132Z', fill: '#d4e6f8' }),
+    S('path', { d: 'M-24,-183 L-3,-138 M24,-183 L3,-138 M-11,-183 L0,-160 M11,-183 L0,-160', stroke: '#3b5da8', 'stroke-width': 3.5 }),
+    inked('circle', { cx: 0, cy: -166, r: 8.5, fill: '#b07d4a' }, 3.5)]);
+  torso.append(kerchief);
+  // head
+  const headG = S('g'), head = S('g', { transform: 'translate(0,-250)' });
+  headG.append(head);
+  [-1, 1].forEach(sd => head.append(inked('circle', { cx: sd * 57, cy: 8, r: 13, fill: skin }), S('circle', { cx: sd * 57, cy: 8, r: 6, fill: skinShade })));
+  head.append(inked('circle', { r: 60, fill: skin }, 5),
+              S('path', { d: 'M22,-55.8 A60,60 0 0,1 22,55.8 A70,70 0 0,0 22,-55.8Z', fill: skinShade, opacity: .45 }));
+  const tuft = inked('path', { d: 'M2,-72 Q-6,-98 14,-104 Q6,-92 16,-76Z', fill: hair }, 4);
+  head.append(tuft,
+              inked('path', { d: 'M-58,-6 Q-68,-66 -20,-72 Q-4,-84 14,-74 Q54,-76 60,-28 Q62,-14 58,-4 Q50,-32 32,-36 L25,-26 L15,-40 L3,-28 L-9,-42 L-21,-28 L-32,-38 Q-52,-30 -58,-6Z', fill: hair }, 5),
+              S('path', { d: 'M-36,-56 Q-20,-66 -4,-62 M18,-62 Q34,-60 44,-48', stroke: '#6b4630', 'stroke-width': 4, fill: 'none', 'stroke-linecap': 'round' }));
+  const eyeOpen = S('g'), eyeJoy = S('g', { style: 'display:none' }), eyes = [];
+  [-22, 22].forEach(x => {
+    const e = S('g');
+    e.append(inked('ellipse', { cx: 0, cy: 0, rx: 13, ry: 15.5, fill: '#fff' }, 3.5),
+             S('circle', { cx: 1.5, cy: 2.5, r: 9.5, fill: '#6b4424' }),
+             S('circle', { cx: 1.5, cy: 3, r: 5.2, fill: '#1c1224' }),
+             S('circle', { cx: 5, cy: -2.5, r: 3.4, fill: '#fff' }),
+             S('circle', { cx: -2.5, cy: 7, r: 1.6, fill: '#fff' }));
+    eyes.push({ g: e, x, y: 6 });
+    eyeOpen.append(e);
+    eyeJoy.append(S('path', { d: `M${x - 11},10 Q${x},-4 ${x + 11},10`, stroke: INK, 'stroke-width': 5, fill: 'none', 'stroke-linecap': 'round' }));
+  });
+  const brows = S('g', {}, [-22, 22].map(x => S('path', { d: `M${x - 11},-15 Q${x},${-22} ${x + 11},-16`, stroke: hair, 'stroke-width': 5.5, fill: 'none', 'stroke-linecap': 'round' })));
+  head.append(eyeOpen, eyeJoy, brows,
+              S('ellipse', { cx: -36, cy: 26, rx: 11, ry: 7, fill: '#ff8fa3', opacity: .6 }),
+              S('ellipse', { cx: 36, cy: 26, rx: 11, ry: 7, fill: '#ff8fa3', opacity: .6 }),
+              S('path', { d: 'M-4,19 Q0,23 4,19', stroke: skinShade, 'stroke-width': 3.5, fill: 'none', 'stroke-linecap': 'round' }));
+  const mouthOpen = inked('path', { fill: '#7a2335' }, 3.5), tongue = S('ellipse', { rx: 7, fill: '#ff7b93' }),
+        teeth = S('rect', { x: -9, width: 18, height: 4.5, rx: 2, fill: '#fff' }),
+        mouthSmile = S('path', { d: 'M-14,32 Q0,42 14,32', stroke: INK, 'stroke-width': 4.5, fill: 'none', 'stroke-linecap': 'round' });
+  head.append(mouthSmile, mouthOpen, teeth, tongue);
+  squash.append(legL, legR, armR, torso, headG, armL);
+  actorsL.append(g);
+  const a = new ToonActor(g, { name, color: '#2456b8', squash, sx: 1, sy: 1, headTop: -358, cy: -170, fingers,
+                               voice: { pitch: 1.55, rate: 1.08 } });
+  Object.assign(a, { legL, legR, torso, headG, kerchief, tuft, eyes, eyeOpen, eyeJoy, brows, fx: true,
+                     blinkT: 2, mouthLevel: 0, spring: { a: 0, v: 0 }, moodName: undefined, restL: 10 });
+  a.setMouth = o => {
+    const open = o > .06;
+    mouthSmile.style.display = open ? 'none' : '';
+    [mouthOpen, teeth, tongue].forEach(el => el.style.display = open ? '' : 'none');
+    if (!open) return;
+    const w = 13 + o * 4, d = 8 + o * 22;
+    mouthOpen.setAttribute('d', `M${-w},31 Q0,35 ${w},31 Q${w * .8},${31 + d * .8} 0,${31 + d} Q${-w * .8},${31 + d * .8} ${-w},31Z`);
+    teeth.setAttribute('y', 31.5);
+    tongue.setAttribute('cy', 31 + d * .72); tongue.setAttribute('ry', 2 + d * .18);
+    tongue.style.display = o > .3 ? '' : 'none';
+  };
+  a.arms = { L: { el: armL, px: -40, py: -174, a: 0 }, R: { el: armR, px: 40, py: -174, a: 0 } };
+  a.setArm('L', 10); a.setArm('R', -10);
+  a.place();
+  TOONS.push(a);
+  return a;
+}
+
+// comic effects
+function speedLines(x, y) {
+  for (let i = 0; i < 5; i++) {
+    const lx = x + (i - 2) * 16, l = S('path', { d: `M${lx},${y} L${lx},${y + 30}`, stroke: '#fff', 'stroke-width': 4, 'stroke-linecap': 'round' });
+    fxL.append(l);
+    tween(420, (p, raw) => { l.setAttribute('transform', `translate(0 ${raw * 50})`); l.setAttribute('opacity', 1 - raw); }, ease.out).then(() => l.remove(), () => {});
+  }
+}
+function dustPuff(x, y) {
+  for (let i = 0; i < 6; i++) {
+    const sd = i < 3 ? -1 : 1, c = inked('circle', { r: 7, fill: '#e9dfc8' }, 3);
+    fxL.append(c);
+    tween(520, (p, raw) => {
+      c.setAttribute('cx', x + sd * (24 + p * (30 + (i % 3) * 14)));
+      c.setAttribute('cy', y - 6 - p * (i % 3) * 8);
+      c.setAttribute('r', 7 + p * 5); c.setAttribute('opacity', 1 - raw);
+    }, ease.out).then(() => c.remove(), () => {});
+  }
+}
+function popIcon(x, y, kind) {
+  const g = S('g');
+  if (kind === 'heart') g.append(inked('path', { d: 'M0,10 C-22,-6 -12,-24 0,-12 C12,-24 22,-6 0,10Z', fill: '#ff5a7a' }, 3.5));
+  else g.append(S('text', { 'text-anchor': 'middle', y: 12, 'font-size': 44, 'font-weight': 800, fill: '#ffd23f', stroke: INK, 'stroke-width': 3,
+                            'paint-order': 'stroke', 'font-family': '"Baloo 2", sans-serif' }, kind));
+  fxL.append(g);
+  tween(1100, (p, raw) => {
+    const s = raw < .25 ? ease.back(raw / .25) : 1;
+    g.setAttribute('transform', `translate(${x} ${y - raw * 40}) scale(${s})`);
+    g.setAttribute('opacity', raw > .7 ? (1 - raw) / .3 : 1);
+  }, ease.lin).then(() => g.remove(), () => {});
+}
+
+// Preview: the same little scene in the current style or the new cartoon style
+async function scenePilot(style) {
+  const toon = style === 'toon';
+  const max = toon ? makeToonCub('Max') : makeCub('Max');
+  if (toon) $('#firelight').style.display = '';
+  const fx = (fn) => toon && fn();
+  max.at(-160);
+  setCaption('Preview', toon ? 'New cartoon style' : 'Current style', '#6b4f9e');
+  await max.walk(560, 3200);
+  fx(() => popIcon(560, max.top() - 20, '!'));
+  if (toon) await camera(560, 410, 1.6, 900);
+  max.mood('joy');
+  const bounce = toon ? (async () => { for (let i = 0; i < 3; i++) await max.jump(22, 420); })() : max.hop(3);
+  await all(bounce, say(max, 'Is it tonight? Is it REALLY tonight?!'));
+  await max.jump(95, 760);
+  fx(() => sparkleAt(560, max.top() + 40));
+  max.mood();
+  await say(max, 'I’ve been practicing all month!');
+  if (toon) await camera(560, 400, 1.3, 700);
+  await max.sign(true);
+  await say(max, 'On my honor I will do my best', { min: 1900 });
+  await max.sign(false);
+  fx(() => { popIcon(520, max.top() + 10, 'heart'); popIcon(600, max.top() - 10, 'heart'); });
+  max.mood('joy'); sfx.rawr();
+  await all(max.jump(60, 600), say(max, 'RAWR!', { big: true, min: 1400 }));
+  await say(max, 'I’m a real Bobcat!');
+  if (toon) await camera(W / 2, HGT / 2, 1, 900);
+  await max.wave(1800);
+  pilotMenu(toon ? 'That was the new cartoon style.' : 'That was the current style.');
+}
+function pilotMenu(msg) {
+  const card = H('div', 'pilot-card', `<h2>Cartoon style preview</h2><p>${msg}</p><div class="row">
+    <button id="pilot-toon">▶ Play new style</button><button id="pilot-old" class="alt">▶ Play current style</button></div>`);
+  overlay.append(card);
+  card.querySelector('#pilot-toon').onclick = () => runPilot('toon');
+  card.querySelector('#pilot-old').onclick = () => runPilot('old');
+}
+async function runPilot(style) {
+  hideStart();
+  const id = ++RUN;
+  stopClip(); setPaused(false); resetStage(); music.setMood('calm');
+  try { await scenePilot(style); } catch (e) { if (e !== CANCEL) console.error(e); }
+}
+
 // ---------- scenes ----------
 const POS = { dad: 230, mom: 385, max: 545, akela: 1100, cat: 880 };
 function stand(c, pos = POS) { for (const k in pos) c[k].at(pos[k]); }
@@ -1222,6 +1541,7 @@ const SCENES = [
 
 // ---------- player ----------
 function resetStage() {
+  TOONS.length = 0; setCam(W / 2, HGT / 2, 1); $('#firelight').style.display = 'none';
   actorsL.innerHTML = ''; fxL.innerHTML = ''; overlay.innerHTML = '';
   closeL.style.display = 'none'; closeL.innerHTML = '';
   setBush(0);
@@ -1288,6 +1608,15 @@ buildBackground();
 (() => { const c = makeCast(); stand(c); c.max.mood('joy'); })();
 updateNav();
 if (params.has('scene')) { hideStart(); start(+params.get('scene')); }
+if (window.PILOT || location.hash === '#pilot') {
+  document.body.classList.add('pilot');
+  document.title = 'Cartoon Style Preview';
+  $('#start h1').textContent = 'Cartoon Style Preview';
+  $('#begin').textContent = '▶ Play the preview';
+  $('#begin').onclick = () => runPilot('toon');
+  $('#play').onclick = () => $('#start').style.display !== 'none' ? runPilot('toon') : setPaused(!paused);
+  if (params.has('pilot')) runPilot(params.get('pilot'));
+}
 </script>
 </body>
 </html>
