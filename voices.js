@@ -12,7 +12,7 @@ window.VOICES = {
  "Bobcat|Psst! I’m the Bobcat! Every Cub Scout adventure starts with me.": "voices/bobcat-2952281432.mp3",
  "Bobcat|To earn your Bobcat, you need to know three big things...": "voices/bobcat-e864f6b4f5.mp3",
  "Max|I’ve been practicing all month!": "voices/max-1424096d89.mp3",
- "Akela|Max, please give the Scout sign and say the Scout Oath.": "voices/akela-a611481a2b.mp3",
+ "Akela|Max, please give the Cub Scout sign and say the Scout Oath.": "voices/akela-2cb918b9bf.mp3",
  "Max|On my honor I will do my best": "voices/max-465bbe69ce.mp3",
  "Max|to do my duty to God and my country": "voices/max-681906b5ba.mp3",
  "Max|and to obey the Scout Law;": "voices/max-48e4fb846d.mp3",

@@ -767,11 +767,16 @@ class Actor {
   }
   sign(on) {
     if (this.fingers) this.fingers.style.display = on ? '' : 'none';
-    return this.arm('L', on ? 168 : 8, 650);
+    return this.arm('L', on ? 168 : this.restL, 650);
   }
   mood(m) { this.head && this.head.mood(m); }
 }
 
+function signFingers(cx, cy, w, h, skin) {
+  return S('g', { style: 'display:none' }, [-1, 1].map(sd => S('rect', {
+    x: cx - w / 2 + sd * w * .55, y: cy, width: w, height: h, rx: w / 2, fill: skin,
+    transform: `rotate(${-sd * 12} ${cx} ${cy})` })));
+}
 function limb(x, y, w, h, fill, hand, skin, extra) {
   const g = S('g');
   g.append(S('rect', { x, y, width: w, height: h, rx: w / 2, fill }));
@@ -787,8 +792,7 @@ function makeCub(name = 'Max') {
            S('rect', { x: 4, y: -80, width: 23, height: 76, rx: 10, fill: '#1b2a4a' }),
            S('ellipse', { cx: -17, cy: -4, rx: 19, ry: 9, fill: '#3a2a1a' }),
            S('ellipse', { cx: 17, cy: -4, rx: 19, ry: 9, fill: '#3a2a1a' }));
-  const fingers = S('g', { style: 'display:none' });
-  [-60, -55, -50].forEach(x => fingers.append(S('rect', { x, y: -94, width: 4.6, height: 19, rx: 2.3, fill: skin })));
+  const fingers = signFingers(-53, -94, 5, 20, skin);
   const armL = limb(-62, -166, 18, 70, shirt, [-53, -94, 10.5], skin, fingers);
   const armR = limb(44, -166, 18, 70, shirt, [53, -94, 10.5], skin);
   g.append(armL, armR);
@@ -807,7 +811,7 @@ function makeCub(name = 'Max') {
   const a = new Actor(g, { name, color: '#2456b8', head, fingers, badge, headTop: -312, cy: -150,
                            voice: { pitch: 1.55, rate: 1.08 } });
   a.arms = { L: { el: armL, px: -53, py: -160, a: 0 }, R: { el: armR, px: 53, py: -160, a: 0 } };
-  a.setArm('L', 8); a.setArm('R', -8);
+  a.setArm('L', 8); a.setArm('R', -8); a.restL = 8;
   return a;
 }
 function neckerchief(s) {
@@ -824,7 +828,8 @@ function makeAdult(o) {
            S('rect', { x: 6, y: -122, width: 28, height: 118, rx: 12, fill: o.pants }),
            S('ellipse', { cx: -21, cy: -4, rx: 21, ry: 9, fill: '#3a2a1a' }),
            S('ellipse', { cx: 21, cy: -4, rx: 21, ry: 9, fill: '#3a2a1a' }));
-  const armL = limb(-74, -256, 22, 104, o.shirt, [-63, -150, 12], o.skin);
+  const fingers = signFingers(-63, -150, 6, 24, o.skin);
+  const armL = limb(-74, -256, 22, 104, o.shirt, [-63, -150, 12], o.skin, fingers);
   const armR = limb(52, -256, 22, 104, o.shirt, [63, -150, 12], o.skin);
   g.append(armL, armR);
   g.append(S('rect', { x: -52, y: -264, width: 104, height: 150, rx: 36, fill: o.shirt }));
@@ -844,9 +849,9 @@ function makeAdult(o) {
   const head = makeHead(o);
   g.append(S('g', { transform: 'translate(0,-322) scale(.95)' }, head.g));
   actorsL.append(g);
-  const a = new Actor(g, { name: o.name, color: o.color, head, headTop: o.hat === 'campaign' ? -425 : -390, cy: -200, voice: o.voice });
+  const a = new Actor(g, { name: o.name, color: o.color, head, fingers, headTop: o.hat === 'campaign' ? -425 : -390, cy: -200, voice: o.voice });
   a.arms = { L: { el: armL, px: -63, py: -248, a: 0 }, R: { el: armR, px: 63, py: -248, a: 0 } };
-  a.setArm('L', 6); a.setArm('R', -6);
+  a.setArm('L', 6); a.setArm('R', -6); a.restL = 6;
   return a;
 }
 function makeBobcat() {
@@ -1027,8 +1032,8 @@ async function sceneBobcat() {
 const OATH_POS = { dad: 110, mom: 255, max: 405, akela: 570, cat: 690 };
 async function sceneOath() {
   const c = makeCast(); stand(c, OATH_POS);
-  await say(c.akela, 'Max, please give the Scout sign and say the Scout Oath.');
-  await all(c.max.sign(true), c.mom.arm('L', 168, 650), c.dad.arm('L', 168, 650), c.akela.arm('L', 168, 650));
+  await say(c.akela, 'Max, please give the Cub Scout sign and say the Scout Oath.');
+  await all(c.max.sign(true), c.mom.sign(true), c.dad.sign(true), c.akela.sign(true));
   const panel = H('div', 'panel', '<h2>The Scout Oath</h2>');
   OATH.forEach(([e, t]) => panel.append(H('div', 'ol', `<span class="e">${e}</span><span>${t}</span>`)));
   overlay.append(panel);
@@ -1041,7 +1046,7 @@ async function sceneOath() {
     await say(c.max, OATH[i][1], { bubble: false, min: 1900 });
   }
   lines.forEach(l => l.classList.remove('now'));
-  await all(c.max.sign(false), c.mom.arm('L', 6), c.dad.arm('L', 6), c.akela.arm('L', 6));
+  await all(c.max.sign(false), c.mom.sign(false), c.dad.sign(false), c.akela.sign(false));
   sfx.chime();
   await all(c.cat.spin(), c.cat.jump(60, 800), say(c.akela, 'Perfect! You said that with your whole heart.'));
 }
