@@ -22,19 +22,6 @@ window.VOICES = {
  "Max|and morally straight.": "voices/max-f391b044fb.mp3",
  "Akela|Perfect! You said that with your whole heart.": "voices/akela-72f2626e68.mp3",
  "Akela|Now for the Scout Law. Tell us, Max: what is a Scout?": "voices/akela-a4dafb5a5d.mp3",
- "Max|A Scout is...": "voices/max-9465008faf.mp3",
- "Max|Trustworthy,": "voices/max-2c26a04021.mp3",
- "Max|Loyal,": "voices/max-91e3733dc5.mp3",
- "Max|Helpful,": "voices/max-08fa359a96.mp3",
- "Max|Friendly,": "voices/max-2ad6548be4.mp3",
- "Max|Courteous,": "voices/max-43f736cfe1.mp3",
- "Max|Kind,": "voices/max-154c393fab.mp3",
- "Max|Obedient,": "voices/max-ae1e3a2f40.mp3",
- "Max|Cheerful,": "voices/max-a9d33db68d.mp3",
- "Max|Thrifty,": "voices/max-b00e6b0904.mp3",
- "Max|Brave,": "voices/max-b4d021f1c8.mp3",
- "Max|Clean,": "voices/max-124f787c50.mp3",
- "Max|Reverent!": "voices/max-6d0cd67725.mp3",
  "Mom|Wow! Twelve out of twelve!": "voices/mom-57861a97c9.mp3",
  "Dad|That’s our Cub Scout!": "voices/dad-34bb9d2325.mp3",
  "Akela|And last but not least... what is our motto?": "voices/akela-5bae0bc0ec.mp3",
@@ -64,5 +51,6 @@ window.VOICES = {
  "Max|You look AWESOME!": "voices/max-7c7cdbd235.mp3",
  "Akela|Congratulations, Max. You are officially a Bobcat of Pack 149!": "voices/akela-57e836ba7a.mp3",
  "Narrator|Every new Scout’s first milestone. A proud moment for Scouts and families alike. And for Max and his family, a brand-new adventure has begun!": "voices/narrator-93bcb24b22.mp3",
- "Narrator|RAWR! Welcome to Pack 149!": "voices/narrator-dd24ef3428.mp3"
+ "Narrator|RAWR! Welcome to Pack 149!": "voices/narrator-dd24ef3428.mp3",
+ "Max|A Scout is trustworthy, loyal, helpful, friendly, courteous, kind, obedient, cheerful, thrifty, brave, clean, and reverent.": "voices/max-1fcb3ea9b6.mp3"
 };

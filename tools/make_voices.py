@@ -44,7 +44,7 @@ def main():
         if os.path.exists(out):
             return "kept"
         voice, style = CAST[speaker]
-        if speaker == "Max" and (text in recited or text.rstrip(",!") in recited or text == "A Scout is..."):
+        if speaker == "Max" and (text in recited or text.rstrip(",!") in recited or text.startswith("A Scout is")):
             style = RECITING
         if "Akela" in text:
             style += AKELA_SAYS

@@ -88,58 +88,6 @@
   "Now for the Scout Law. Tell us, Max: what is a Scout?"
  ],
  [
-  "Max",
-  "A Scout is..."
- ],
- [
-  "Max",
-  "Trustworthy,"
- ],
- [
-  "Max",
-  "Loyal,"
- ],
- [
-  "Max",
-  "Helpful,"
- ],
- [
-  "Max",
-  "Friendly,"
- ],
- [
-  "Max",
-  "Courteous,"
- ],
- [
-  "Max",
-  "Kind,"
- ],
- [
-  "Max",
-  "Obedient,"
- ],
- [
-  "Max",
-  "Cheerful,"
- ],
- [
-  "Max",
-  "Thrifty,"
- ],
- [
-  "Max",
-  "Brave,"
- ],
- [
-  "Max",
-  "Clean,"
- ],
- [
-  "Max",
-  "Reverent!"
- ],
- [
   "Mom",
   "Wow! Twelve out of twelve!"
  ],
@@ -258,5 +206,9 @@
  [
   "Narrator",
   "RAWR! Welcome to Pack 149!"
+ ],
+ [
+  "Max",
+  "A Scout is trustworthy, loyal, helpful, friendly, courteous, kind, obedient, cheerful, thrifty, brave, clean, and reverent."
  ]
 ]

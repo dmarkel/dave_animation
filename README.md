@@ -43,7 +43,8 @@ Each line has a recorded clip in `voices/` (AI-generated with OpenAI's `gpt-4o-m
 
 **After changing any spoken line:** update `voices/lines.json` (pairs of `["Speaker", "caption text"]`,
 matching the text in `index.html` exactly), then run `OPENAI_API_KEY=sk-... python3 tools/make_voices.py`.
-Only new or changed lines are generated (a few cents at most). "149" is read aloud as "one forty-nine".
+Only new or changed lines are generated (a few cents at most). Then run `node tools/make_lips.js` (mouth
+movement) and, if the Scout Law line changed, `python3 tools/word_times.py` (when each badge pops up). "149" is read aloud as "one forty-nine".
 
 **Single-file page for sharing:** `python3 tools/build_page.py out.html` embeds all the clips into one file.
 

@@ -325,6 +325,7 @@
 
 <script src="voices.js"></script>
 <script src="voices-lips.js"></script>
+<script src="voices-timing.js"></script>
 <script>
 /* =====================================================================
    THE PAINTED BOBCAT — a Pack 149 story
@@ -1008,10 +1009,10 @@ function makeBobcat() {
 function makeCast() {
   const dad = makeToonAdult({ name: 'Dad', color: '#c8553d', skin: '#eab48c', skinShade: '#cf8f66', hair: '#4a2e1a', hairStyle: 'dad',
                               shirt: '#d05a3f', shirtShade: '#a8412c', pants: '#3b4a7b', glasses: true, beard: true, iris: '#3c6fb0',
-                              tee: 'PROUD DAD', voice: { pitch: .75, rate: .98 } });
+                              voice: { pitch: .75, rate: .98 } });
   const mom = makeToonAdult({ name: 'Mom', color: '#2e9e8f', skin: '#f5c7a2', skinShade: '#dc9f7c', hair: '#8a4b22', hairStyle: 'mom',
                               longHair: true, lashes: true, shirt: '#2fa596', shirtShade: '#1f7d71', pants: '#39508a', iris: '#3f7d4f',
-                              tee: 'PROUD MOM', voice: { pitch: 1.25, rate: 1 } });
+                              voice: { pitch: 1.25, rate: 1 } });
   const akela = makeToonAdult({ name: 'Akela', color: '#8a6a2e', skin: '#ebb993', skinShade: '#cf9670', hair: '#b9b9c2', hairStyle: 'akela',
                                 hat: 'campaign', mustache: '#c9c9d1', brow: '#9a9aa6', bushy: true, shirt: '#d8c08a', shirtShade: '#b69d63',
                                 pants: '#5b6a3c', iris: '#6b4a2a', leader: true, voice: { pitch: .9, rate: .94 } });
@@ -1701,14 +1702,30 @@ async function sceneLaw() {
   panel.append(grid);
   await say(c.akela, 'Now for the Scout Law. Tell us, Max: what is a Scout?');
   overlay.append(panel);
-  await say(c.max, 'A Scout is...', { bubble: false, min: 1200 });
+  // Max says the whole Law in one breath; each badge pops up as he says its word
+  const lawLine = 'A Scout is ' + LAW.map(([, w], i) => (i === LAW.length - 1 ? 'and ' : '') + w.toLowerCase()).join(', ') + '.';
+  const words = (window.WORD_TIMES || {})['Max|' + lawLine] || [];
+  const times = LAW.map(([, w], i) => {
+    const hit = words.find(([ww]) => ww.toLowerCase().replace(/[^a-z]/g, '') === w.toLowerCase());
+    return hit ? hit[1] : 1.2 + i * .6;              // even spacing if there's no timing data
+  });
   const badges = grid.querySelectorAll('.lb');
-  for (let i = 0; i < LAW.length; i++) {
-    badges[i].classList.add('show');
-    sfx.pop(1 + i * .06);
-    c.max.jump(18, 300);
-    await say(c.max, LAW[i][1] + (i === LAW.length - 1 ? '!' : ','), { bubble: false, min: 700 });
+  let shown = 0, done = false;
+  const reciting = say(c.max, lawLine, { bubble: false });
+  reciting.then(() => { done = true; }, () => {});
+  const t0 = performance.now();
+  while (!done && shown < LAW.length) {
+    await wait(30);
+    const t = talking && talking.name === 'Max' && talking.audio ? talking.audio.currentTime
+                                                                 : (performance.now() - t0) / 1000 * SPEED * PACE;
+    while (shown < LAW.length && times[shown] <= t) {
+      badges[shown].classList.add('show');
+      sfx.pop(1 + shown * .06);
+      shown++;
+    }
   }
+  badges.forEach(b => b.classList.add('show'));
+  await reciting;
   grid.classList.add('dance');
   c.max.mood('joy'); sfx.chime();
   await all(c.mom.jump(35), say(c.mom, 'Wow! Twelve out of twelve!'));
