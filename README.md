@@ -4,7 +4,8 @@ A whimsical, narrated JavaScript + SVG animation of a Cub Scout's Bobcat ceremon
 Family, Fun & Adventure.
 
 **To watch:** open `index.html` in any modern browser (no install or server needed).
-Turn the sound up: an original campfire tune plays in the background (🎵 toggles it) and the browser reads the story aloud (🔊 toggles voices).
+Turn the sound up: an original campfire tune plays in the background (🎵 toggles it) and every character
+has their own voice (🔊 toggles voices). Voices are AI-generated with OpenAI text-to-speech.
 
 ## The story
 1. **Welcome** – a campfire night at Pack 149, and a friendly bobcat says hello.
@@ -26,3 +27,22 @@ URL options: `?scene=6` starts at a scene, `?speed=2` plays faster.
 All the ceremony words are at the top of the `<script>` in `index.html`:
 `OATH`, `LAW`, `MOTTO`, `MARKS` (each paint color's meaning) and `PARENT_WHITE`.
 The Scout's name is set in `makeCub('Max')` and in the scene text.
+
+## Voices
+Each line has a recorded clip in `voices/` (AI-generated with OpenAI's `gpt-4o-mini-tts`), listed in
+`voices.js`. Any line without a clip falls back to the browser's built-in voice.
+
+| Character | Voice | Direction |
+|---|---|---|
+| Narrator | fable | cozy picture-book storyteller |
+| Akela | onyx | wise, grandfatherly campfire leader |
+| Max | nova | excited 7-year-old (earnest when reciting the Oath and Law) |
+| Mom | coral | loving, cheerful, giggly |
+| Dad | ash | goofy, proud dad |
+| Bobcat | verse | sly, mischievous cartoon cat |
+
+**After changing any spoken line:** update `voices/lines.json` (pairs of `["Speaker", "caption text"]`,
+matching the text in `index.html` exactly), then run `OPENAI_API_KEY=sk-... python3 tools/make_voices.py`.
+Only new or changed lines are generated (a few cents at most). "149" is read aloud as "one forty-nine".
+
+**Single-file page for sharing:** `python3 tools/build_page.py out.html` embeds all the clips into one file.

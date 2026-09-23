@@ -271,7 +271,7 @@
       <div class="kicker">Cub Scout Pack 149 presents</div>
       <h1>The Painted Bobcat</h1>
       <button id="begin">▶ Begin the Ceremony</button>
-      <small>Turn your sound up for music and narration 🎵</small>
+      <small>Turn your sound up for music and narration 🎵 · Voices are AI-generated</small>
     </div>
   </div>
   <div id="caption"><span class="who" style="background:#6b4f9e">Pack 149</span><span class="txt">A story of Family, Fun &amp; Adventure.</span></div>
@@ -286,6 +286,7 @@
   <div id="rotate">Tip: turn your phone sideways for a bigger show!</div>
 </div>
 
+<script src="voices.js"></script>
 <script>
 /* =====================================================================
    THE PAINTED BOBCAT — a Pack 149 story
@@ -399,8 +400,28 @@ function pickVoice() {
        || vs.find(v => /en[-_]US/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
 }
 if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-function speak(text, v = {}) {
-  if (!soundOn || !window.speechSynthesis) return Promise.resolve();
+// Recorded voices: voices.js sets window.VOICES, mapping "Speaker|caption text" to an audio clip.
+// Any line without a clip falls back to the browser's built-in voice.
+let clip = null;
+const clipFor = (name, text) => window.VOICES && window.VOICES[name + '|' + text];
+function playClip(src) {
+  return new Promise(res => {
+    const a = new Audio(src);
+    clip = a;
+    a.playbackRate = Math.min(SPEED, 2);
+    let done = false;
+    a.finish = () => { if (!done) { done = true; music.duck(false); if (clip === a) clip = null; res(); } };
+    a.onended = a.onerror = a.finish;
+    music.duck(true);
+    a.play().catch(a.finish);
+  });
+}
+function stopClip() { if (clip) { clip.pause(); clip.finish(); } }
+function speak(text, v = {}, name) {
+  if (!soundOn) return Promise.resolve();
+  const src = clipFor(name, text);
+  if (src) return playClip(src);
+  if (!window.speechSynthesis) return Promise.resolve();
   return new Promise(res => {
     const clean = text.replace(/\p{Extended_Pictographic}|️/gu, '').replace(/Akela/g, 'Ah-kay-la');
     const u = new SpeechSynthesisUtterance(clean);
@@ -523,8 +544,11 @@ function say(who, text, { bubble = true, min = 0, big = false } = {}) {
   who = who || NARRATOR;
   setCaption(who.name, text, who.color);
   const b = (bubble && who.top) ? showBubble(who.x, who.top() - 14, text, big) : null;
+  if (params.has('collect')) (window.__lines ||= {})[who.name + '|' + text] = [who.name, text];
   const words = text.split(/\s+/).length;
-  return all(wait(Math.max(min, 1300 + words * 310)), speak(text, who.voice))
+  const recorded = soundOn && clipFor(who.name, text);
+  return all(wait(recorded ? Math.max(min, 400) : Math.max(min, 1300 + words * 310)), speak(text, who.voice, who.name))
+    .then(() => recorded && wait(300))
     .then(() => { b && b.remove(); });
 }
 const narrate = (text, o) => say(null, text, o);
@@ -1204,6 +1228,7 @@ function updateNav() {
 async function start(i) {
   const id = ++RUN;
   if (window.speechSynthesis) speechSynthesis.cancel();
+  stopClip();
   setPaused(false);
   for (let k = Math.max(0, i); k < SCENES.length; k++) {
     if (id !== RUN) return;
@@ -1216,6 +1241,7 @@ function setPaused(p) {
   paused = p;
   document.body.classList.toggle('paused', p);
   if (window.speechSynthesis) p ? speechSynthesis.pause() : speechSynthesis.resume();
+  if (clip) p ? clip.pause() : clip.play().catch(() => {});
   if (AC) p ? AC.suspend() : AC.resume();
   updateNav();
 }
@@ -1238,7 +1264,7 @@ $('#snd').onclick = () => {
   soundOn = !soundOn;
   $('#snd').classList.toggle('on', soundOn);
   $('#snd').textContent = soundOn ? '🔊 Voices' : '🔇 Voices';
-  if (!soundOn && window.speechSynthesis) speechSynthesis.cancel();
+  if (!soundOn) { if (window.speechSynthesis) speechSynthesis.cancel(); stopClip(); }
 };
 $('#mus').onclick = () => {
   const v = !$('#mus').classList.contains('on');

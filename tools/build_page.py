@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""Build a single self-contained page (voices embedded) for publishing.
+
+Usage: python3 tools/build_page.py OUTPUT.html
+The output has no <html>/<head>/<body> wrapper, as the Artifact host adds its own.
+"""
+import base64, json, os, re, sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+html = open(os.path.join(ROOT, "index.html"), encoding="utf-8").read()
+voices = open(os.path.join(ROOT, "voices.js"), encoding="utf-8").read()
+mapping = json.loads(voices[voices.index("{"):voices.rindex("}") + 1])
+embedded = {k: "data:audio/mpeg;base64," + base64.b64encode(open(os.path.join(ROOT, v), "rb").read()).decode()
+            for k, v in mapping.items()}
+html = html.replace('<script src="voices.js"></script>',
+                    "<script>window.VOICES = " + json.dumps(embedded, ensure_ascii=False) + ";</script>")
+for tag in (r"<!DOCTYPE html>\n", r'<html lang="en">\n', r"<head>\n", r"</head>\n", r"<body>\n", r"</body>\n", r"</html>\n?", r"<meta [^>]*>\n"):
+    html = re.sub(tag, "", html)
+open(sys.argv[1], "w", encoding="utf-8").write(html)
+print(f"{sys.argv[1]}: {len(html) / 1e6:.1f} MB, {len(embedded)} clips")
