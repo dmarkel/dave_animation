@@ -773,9 +773,9 @@ class Actor {
 }
 
 function signFingers(cx, cy, w, h, skin) {
-  return S('g', { style: 'display:none' }, [-1, 1].map(sd => S('rect', {
-    x: cx - w / 2 + sd * w * .55, y: cy, width: w, height: h, rx: w / 2, fill: skin,
-    transform: `rotate(${-sd * 12} ${cx} ${cy})` })));
+  return S('g', { style: 'display:none' }, [-1, 0].map(i => S('rect', {
+    x: cx + i * w, y: cy, width: w, height: h, rx: w / 2, fill: skin,
+    stroke: 'rgba(120,60,30,.35)', 'stroke-width': .8 })));
 }
 function limb(x, y, w, h, fill, hand, skin, extra) {
   const g = S('g');
