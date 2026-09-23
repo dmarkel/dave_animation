@@ -15,6 +15,8 @@ embedded = {k: "data:audio/mpeg;base64," + base64.b64encode(open(os.path.join(RO
             for k, v in mapping.items()}
 html = html.replace('<script src="voices.js"></script>',
                     "<script>window.VOICES = " + json.dumps(embedded, ensure_ascii=False) + ";</script>")
+for img in sorted(set(re.findall(r"assets/[\w-]+\.jpg", html))):
+    html = html.replace(img, "data:image/jpeg;base64," + base64.b64encode(open(os.path.join(ROOT, img), "rb").read()).decode())
 lips = open(os.path.join(ROOT, "voices-lips.js"), encoding="utf-8").read()
 html = html.replace('<script src="voices-lips.js"></script>', "<script>" + lips + "</script>")
 if "--pilot" in sys.argv:
