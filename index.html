@@ -25,7 +25,7 @@
     background: radial-gradient(ellipse at top, #1d2660, var(--page) 70%);
     color: #fff;
     font-family: "Baloo 2", "Comic Sans MS", "Chalkboard SE", system-ui, sans-serif;
-    display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: safe center; justify-content: center;
     overflow-x: hidden;
   }
   #app {
@@ -1967,6 +1967,22 @@ setBackdrop('cartoon');
 updateNav();
 if (params.has('scene')) { hideStart(); start(+params.get('scene')); }
 if (RECORD) { document.body.classList.add('record'); $('#stage').append($('#caption')); }
+// Size the player so the picture, captions and buttons all fit in the window. Captions and
+// buttons grow with the width, so measure the whole player and shrink until it fits.
+function fitApp() {
+  if (RECORD) return;
+  const app = $('#app'), avail = window.innerHeight - 16;
+  let w = window.innerWidth - 16;
+  for (let i = 0; i < 6; i++) {
+    app.style.width = w + 'px';
+    const h = app.getBoundingClientRect().height;
+    if (h <= avail + 1 || w <= 300) break;
+    w = Math.max(300, Math.floor(w * avail / h) - 2);
+  }
+}
+window.addEventListener('resize', fitApp);
+fitApp();
+if (document.fonts) document.fonts.ready.then(fitApp);
 if (window.PILOT || location.hash === '#pilot') {
   document.body.classList.add('pilot');
   document.title = 'Cartoon Style Preview';
