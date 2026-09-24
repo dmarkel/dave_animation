@@ -63,3 +63,8 @@ node export_video.js           # or: node export_video.js ~/Desktop/painted-bobc
 ## Cartoon preview and backgrounds
 `index.html#pilot` plays a short before/after test of the cartoon style. `assets/bg-*.jpg` are the
 painted backdrops (OpenAI image model); the story uses `bg-cartoon.jpg`.
+
+## Pack 149 website
+`python3 tools/export_site.py <site>/bobcat-ceremony --back-link ../programs.html --back-text "Back to Pack 149 Programs"`
+copies the presentation (page, voice clips, timing files, backdrop) into the pack website, where the Bobcat
+Ceremony card on `programs.html` links to it. Re-run it after changing the story, then commit the site.

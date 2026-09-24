@@ -1617,11 +1617,13 @@ async function sceneWelcome() {
   const t = H('div', 'titlecard', `<div class="k">Cub Scout Pack 149 presents</div><h1>The Painted Bobcat</h1>
     <div class="t">A tale of <b>Family</b>, <b>Fun</b> &amp; <b>Adventure</b></div>`);
   overlay.append(t);
+  $('#bunting').style.display = 'none';         // the banner would sit behind the title
   await all(camera(W / 2, HGT / 2, 1, 3200), c.cat.walk(540, 3600),
             narrate('Once upon a starry night, deep in the woods where Pack 149 gathers around the campfire, it was time for a Bobcat ceremony...'));
   sfx.rawr(); fireFlare();
   await all(c.cat.jump(50), say(c.cat, 'Rawr! That’s Bobcat for “hello!”'));
   t.classList.add('out');
+  setTimeout(() => { $('#bunting').style.display = ''; }, 700 / SPEED);
   await all(hopOverFire(c.cat, 1400), wait(700));
 }
 
