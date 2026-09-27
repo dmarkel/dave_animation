@@ -86,6 +86,9 @@
     box-shadow: 0 .5cqw 0 #b88600; animation: throb 1.6s infinite ease-in-out;
   }
   #start small { font-size: 1.5cqw; opacity: .8; }
+  #start button:disabled { animation: none; opacity: .75; cursor: progress; box-shadow: none; }
+  #loadbar { width: 32cqw; height: .9cqw; min-height: 6px; border-radius: 99px; background: rgba(255,255,255,.18); overflow: hidden; }
+  #loadbar div { height: 100%; width: 0; background: var(--gold); border-radius: inherit; transition: width .25s ease-out; }
   @keyframes throb { 50% { transform: scale(1.06); } }
 
   /* speech bubbles */
@@ -312,7 +315,8 @@
     <div id="start">
       <div class="kicker">Cub Scout Pack 149 presents</div>
       <h1>The Painted Bobcat</h1>
-      <button id="begin">▶ Begin the Ceremony</button>
+      <button id="begin" data-label="▶ Begin the Ceremony">▶ Begin the Ceremony</button>
+      <div id="loadbar" aria-hidden="true"><div></div></div>
       <small>Turn your sound up for music and narration 🎵 · Voices are AI-generated</small>
     </div>
   </div>
@@ -508,13 +512,21 @@ function showVoicePrompt() {
   $('#stage').append(b);
 }
 function hideVoicePrompt() { const b = $('#voice-prompt'); if (b) b.remove(); }
-// Download every clip in the background once the story starts, so lines don't lag on slow connections.
-let prefetched = false;
-function prefetchVoices() {
-  if (prefetched || RECORD || !window.VOICES) return;
-  prefetched = true;
+// Download every voice clip while the start screen shows, and keep it in memory, so no line
+// waits on the network. (The single-file page has its clips built in and skips this.)
+const VOICE_BLOBS = {};
+function preloadVoices(onProgress) {
+  if (RECORD || !window.VOICES) return Promise.resolve();
   const urls = [...new Set(Object.values(window.VOICES))].filter(u => !u.startsWith('data:'));
-  (async () => { for (const u of urls) { try { await fetch(u); } catch (e) { /* the player will fetch it itself */ } } })();
+  if (!urls.length) return Promise.resolve();
+  let n = 0;
+  const one = async u => {
+    try { const r = await fetch(u); if (r.ok) VOICE_BLOBS[u] = URL.createObjectURL(await r.blob()); }
+    catch (e) { /* the player will fetch it itself */ }
+    onProgress(++n / urls.length);
+  };
+  const queue = urls.slice();
+  return Promise.all(Array.from({ length: 4 }, async () => { while (queue.length) await one(queue.shift()); }));
 }
 // Resolves true when the line played, false when it couldn't. A line cut off by a skip or
 // restart rejects with CANCEL, so the scene that started it stops too.
@@ -538,7 +550,7 @@ function playClip(src, name, text) {
     a.onended = () => finish(true);
     a.onerror = () => finish(false);
     a.defaultPlaybackRate = rate;       // loading a new clip resets playbackRate to this
-    a.src = src;
+    a.src = VOICE_BLOBS[src] || src;
     a.playbackRate = rate;
     music.duck(true);
     a.play().then(hideVoicePrompt, e => {
@@ -1984,7 +1996,7 @@ SCENES.forEach((s, i) => {
 function hideStart() {
   if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   if (AC && AC.state === 'suspended') AC.resume();
-  unlockVoice(); prefetchVoices();
+  unlockVoice();
   music.start();
   $('#start').style.display = 'none';
 }
@@ -2038,12 +2050,22 @@ if (window.PILOT || location.hash === '#pilot') {
   document.body.classList.add('pilot');
   document.title = 'Cartoon Style Preview';
   $('#start h1').textContent = 'Cartoon Style Preview';
-  $('#begin').textContent = '▶ Play the preview';
+  $('#begin').textContent = $('#begin').dataset.label = '▶ Play the preview';
   $('#begin').onclick = () => runPilot('toon');
   if (params.has('bg')) pilotBg = params.get('bg');
   $('#play').onclick = () => $('#start').style.display !== 'none' ? runPilot('toon') : setPaused(!paused);
   if (params.has('pilot')) runPilot(params.get('pilot'));
 }
+// Loading screen: the start button waits until the voices are downloaded (at most 20 seconds).
+(() => {
+  const btn = $('#begin'), bar = $('#loadbar');
+  const ready = () => { btn.disabled = false; btn.textContent = btn.dataset.label; bar.remove(); };
+  if (RECORD) return ready();
+  btn.disabled = true; btn.textContent = 'Loading\u2026';
+  const loaded = Promise.all([preloadVoices(f => { bar.firstChild.style.width = (f * 100).toFixed(1) + '%'; }),
+                              document.fonts ? document.fonts.ready : null]);
+  Promise.race([loaded, new Promise(r => setTimeout(r, 20000))]).then(ready);
+})();
 </script>
 </body>
 </html>
